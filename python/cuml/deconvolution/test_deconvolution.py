@@ -5,12 +5,13 @@ from skimage import color, data, restoration
 from scipy.signal import convolve2d
 
 # from cuml.deconvolution.deconvolution import richardson_lucy
-from deconvolution import richardson_lucy
+from deconvolution import richardson_lucy, deconvolution_fmin
 
 from scipy.signal import convolve2d as conv2
 
 def test_sklearn():
     astro = color.rgb2gray(data.astronaut())
+    # astro = astro[::25,::25]
 
     psf = np.ones((5, 5)) / 25
     d = convolve2d(astro, psf, 'same')
@@ -19,12 +20,14 @@ def test_sklearn():
     d += (np.random.poisson(25, size=d.shape) - 10) / 255
 
     iter = 10
+    astro_deconv3 = deconvolution_fmin(d.copy(), psf.copy(), maxiter=10, disp=1)
     astro_deconv = richardson_lucy(d.copy(), psf.copy(), disp=1, maxiter=iter)
     astro_deconv2 = restoration.richardson_lucy(d.copy(), psf.copy(), iterations=iter)
-
-    f, ax = plt.subplots(1, 4, figsize=(8, 5))
     
-    for a in (ax[0], ax[1], ax[2], ax[3]):
+    
+    f, ax = plt.subplots(1, 5, figsize=(8, 5))
+    
+    for a in (ax[0], ax[1], ax[2], ax[3], ax[4]):
        a.axis('off')
 
     plt.gray()
@@ -36,6 +39,8 @@ def test_sklearn():
     ax[2].set_title("My Deconv")
     ax[3].imshow(astro_deconv2, vmin=astro.min(), vmax=astro.max())
     ax[3].set_title("Sk-Image\nDeconv")
+    ax[3].imshow(astro_deconv3, vmin=astro.min(), vmax=astro.max())
+    ax[3].set_title("Fmin\nDeconv")
 
     f.subplots_adjust(wspace=0.02, hspace=0.2,
                       top=0.9, bottom=0.05, left=0, right=1)

@@ -16,6 +16,10 @@
 
 import numpy as np
 from scipy.signal import convolve2d, fftconvolve
+from scipy.optimize import fmin_l_bfgs_b
+import scipy.optimize as optimize
+import scipy
+from IPython.core.debugger import set_trace
 
 def richardson_lucy(d,
                     psf,
@@ -107,13 +111,12 @@ def richardson_lucy(d,
 def deconvolution_fmin(d, psf,
                        maxiter=10,
                        stop_delta_u=1e-1,
-                       maxiter=10,
                        stop_grad=1e-4,
                        disp=-1):
     """
-    Computes the deconvolution of the data `d` created with `psf` using the
-    Richardson-Lucy algorithm.
-
+    Computes the deconvolution of the data `d` created with `psf` using an
+    iterative numerical optimization technique.
+    
     Arguments
     ---------
     d            : array
@@ -136,7 +139,7 @@ def deconvolution_fmin(d, psf,
 
     Algorithm
     ---------
-    
+
     """
 
     # Note: convolve optimization taken from skimage's richardson_lucy implementation
@@ -157,13 +160,19 @@ def deconvolution_fmin(d, psf,
 
     sigma = 0.5
 
-
-    def f(I):
+    def f(If):
+        I = np.reshape(If, d.shape)
         return np.linalg.norm(d - convolve_method(I, psf, 'same'))**2 / (2*sigma)
         
-    def g(I):
+    def g(If):
+        I = np.reshape(If, d.shape)
         diff = d - convolve_method(I, psf, 'same')
-        return convolve_method(diff, psf[::-1,::-1])/sigma
+        return (convolve_method(diff, psf[::-1,::-1], 'same')/sigma).ravel()
 
+    # fprime_test = scipy.optimize.optimize._approx_fprime_helper(d.ravel(), f, epsilon=1e-8)
+    # g_test = g(d.ravel())
+    # set_trace()
+    # image, f, res_info = fmin_l_bfgs_b(f, np.full(d.shape, 0.5).ravel(), fprime=g, maxiter=maxiter, disp=disp)
+    res = optimize.minimize(f, d.ravel(), jac=g, method='CG')
 
-
+    return np.reshape(res.x, d.shape)
