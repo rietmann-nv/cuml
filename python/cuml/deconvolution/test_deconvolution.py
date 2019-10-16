@@ -5,9 +5,38 @@ from skimage import color, data, restoration
 from scipy.signal import convolve2d
 
 # from cuml.deconvolution.deconvolution import richardson_lucy
-from deconvolution import richardson_lucy, deconvolution_fmin
+from deconvolution import richardson_lucy, deconvolution_fmin, cupy_fftconvolve
 
 from scipy.signal import convolve2d as conv2
+from scipy.signal import fftconvolve
+
+from timeit import default_timer as timer
+
+import cupy as cp
+
+def test_fftconvolve_gpu(plot=False):
+    astro = color.rgb2gray(data.astronaut())
+    astro = astro[::25,::25]
+
+    psf = np.ones((5, 5)) / 25
+    d = fftconvolve(astro.copy(), psf.copy(), 'same')
+
+    d2_gpu = cupy_convolve(astro.copy(), psf.copy())
+    d2_cpu = cp.asnumpy(d2_gpu)
+
+    np.testing.assert_allclose(d, d2_cpu)
+
+    if plot:
+        f, ax = plt.subplots(1, 2, figsize=(8, 5), num=1, clear=True)
+
+        plt.gray()
+        ax[0].imshow(d)
+        ax[0].set_title("FFTCONVOLVE\nCPU")
+        ax[1].imshow(d_gpu)
+        ax[1].set_title("FFTCONVOLVE\nGPU")
+        f.subplots_adjust(wspace=0.02, hspace=0.2,
+                          top=0.9, bottom=0.05, left=0, right=1)
+
 
 def test_sklearn():
     astro = color.rgb2gray(data.astronaut())
@@ -21,8 +50,18 @@ def test_sklearn():
 
     num_iter = 10
     astro_deconv3 = deconvolution_fmin(d.copy(), psf.copy(), maxiter=2*num_iter, disp=1)
-    astro_deconv = richardson_lucy(d.copy(), psf.copy(), disp=1, maxiter=num_iter)
-    astro_deconv2 = restoration.richardson_lucy(d.copy(), psf.copy(), iterations=num_iter)    
+    start = timer()
+    astro_deconv = richardson_lucy(d.copy(), psf.copy(), disp=-1, maxiter=num_iter)
+    end = timer()
+    time_myrl_s = end - start
+    start = timer()
+    astro_deconv2 = restoration.richardson_lucy(d.copy(), psf.copy(), iterations=num_iter)
+    end = timer()
+    time_sprl_s = end - start
+
+    # for 512x512 on CPU
+    # Time My R-L: 0.29476031521335244s, Scikit-im R-L: 0.28734008595347404s
+    print("Time My R-L: {}s, Scikit-im R-L: {}s".format(time_myrl_s, time_sprl_s))
 
     astro_deconv3_conv = convolve2d(astro_deconv3, psf, 'same')
 

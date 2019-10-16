@@ -15,12 +15,40 @@
 #
 
 import numpy as np
+import cupy as cp
 from scipy.signal import convolve2d, fftconvolve
 from scipy.optimize import fmin_l_bfgs_b
 import scipy.optimize as optimize
 import scipy
 from IPython.core.debugger import set_trace
+from scipy import fftpack
 
+
+def cupy_fftconvolve(h_I, h_psf, mode="same"):
+    """Limited CUPY port of scipy.signal.fftconvolve"""
+    if mode is not "same":
+        raise Exception("Only 'same' mode supported for now")
+
+    I = cp.array(h_I)
+    psf = cp.array(h_psf)
+
+    s1 = np.array(I.shape)
+    s2 = np.array(psf.shape)
+    shape = np.maximum(s1, s2)
+    shape = s1 + s2 - 1
+    fshape = (shape[0], shape[1])
+
+    axes = np.array([0, 1])
+
+    sp1 = cp.fft.rfftn(I, fshape, axes=axes)
+    sp2 = cp.fft.rfftn(psf, fshape, axes=axes)
+    ret = cp.fft.irfftn(sp1 * sp2, fshape, axes=axes)
+
+    if mode is "same":
+        ret = scipy.signal.signaltools._centered(ret, I.shape)
+
+    return ret
+    
 def richardson_lucy(d,
                     psf,
                     stop_delta_u=1e-8,
@@ -65,8 +93,6 @@ def richardson_lucy(d,
 
     where ^* is a vertical + horizontal mirror
 
-
-
     """
     # Note: convolve optimization taken from skimage's richardson_lucy implementation
     # compute the times for direct convolution and the fft method. The fft is of
@@ -88,12 +114,13 @@ def richardson_lucy(d,
     # a more logical choice would simply be ut = d.copy()
     ut = np.full(d.shape, 0.5)
     utp1 = ut
+    psf_flip = psf[::-1, ::-1]
     for i in range(maxiter):
-        utp1 = ut * convolve_method(d / convolve_method(ut,psf, 'same'), psf[::-1, ::-1], 'same')
-
-        diff_norm_u = np.linalg.norm(utp1-ut)
+        utp1 = ut * convolve_method(d / convolve_method(ut,psf, 'same'), psf_flip, 'same')
+        ut = utp1
 
         if disp > 0:
+            diff_norm_u = np.linalg.norm(utp1-ut)
             if disp > 100:
                 print("{}:|ut-u_t+1|=".format(i), diff_norm_u)
             if np.mod(i, disp) == 0:
@@ -102,8 +129,6 @@ def richardson_lucy(d,
         if disp > 0:
             if i == maxiter:
                 print("STOPPING DUE TO MAXIMUM NUMBER OF ITERATIONS: ", maxiter)
-
-        ut = utp1
 
     return utp1
 
