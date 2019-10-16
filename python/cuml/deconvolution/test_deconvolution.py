@@ -20,14 +20,14 @@ def test_sklearn():
     d += (np.random.poisson(25, size=d.shape) - 10) / 255
 
     num_iter = 10
-    astro_deconv3 = deconvolution_fmin(d.copy(), psf.copy(), maxiter=num_iter, disp=1)
+    astro_deconv3 = deconvolution_fmin(d.copy(), psf.copy(), maxiter=2*num_iter, disp=1)
     astro_deconv = richardson_lucy(d.copy(), psf.copy(), disp=1, maxiter=num_iter)
     astro_deconv2 = restoration.richardson_lucy(d.copy(), psf.copy(), iterations=num_iter)    
 
     astro_deconv3_conv = convolve2d(astro_deconv3, psf, 'same')
 
-    f, ax = plt.subplots(1, 5, figsize=(8, 5))
-    
+    f, ax = plt.subplots(1, 5, figsize=(8, 5), num=1, clear=True)
+
     for a in (ax[0], ax[1], ax[2], ax[3], ax[4]):
        a.axis('off')
 
@@ -37,16 +37,17 @@ def test_sklearn():
     ax[1].imshow(d, vmin=astro.min(), vmax=astro.max())
     ax[1].set_title("Conv(psf) + noise")
     ax[2].imshow(astro_deconv3_conv, vmin=astro.min(), vmax=astro.max())
-    ax[2].set_title("Fmin Deconv + Conv(psf)")
+    ax[2].set_title("Fmin Deconv\n + Conv(psf)")
     ax[3].imshow(astro_deconv, vmin=astro.min(), vmax=astro.max())
-    ax[3].set_title("My Deconv")
+    ax[3].set_title("My R-L Deconv")
     # ax[3].imshow(astro_deconv2, vmin=astro.min(), vmax=astro.max())
     # ax[3].set_title("Sk-Image\nDeconv")
     ax[4].imshow(astro_deconv3, vmin=astro.min(), vmax=astro.max())
-    ax[4].set_title("Fmin\nDeconv")
+    ax[4].set_title("Fmin Deconv")
 
     f.subplots_adjust(wspace=0.02, hspace=0.2,
                       top=0.9, bottom=0.05, left=0, right=1)
+    f.show()
     
 def orig():
     """ Taken from sk-image's documentation on deconvolution"""

@@ -112,6 +112,7 @@ def deconvolution_fmin(d, psf,
                        maxiter=10,
                        stop_delta_u=1e-1,
                        stop_grad=1e-4,
+                       lambda_reg=0.01,
                        disp=-1):
     """
     Computes the deconvolution of the data `d` created with `psf` using an
@@ -123,10 +124,14 @@ def deconvolution_fmin(d, psf,
                    recorded data (d = I + e)
     psf          : array
                    point spread kernel
-    stop_delta_u : float (default 1e-8)
-                   stop when ||u_{t+1} - u_t|| < 'stop_delta_u'
     maxiter      : int (default 10)
                    maximumum number of R-L iterations
+    stop_delta_u : float (default 1e-8)
+                   stop when ||u_{t+1} - u_t|| < 'stop_delta_u'
+    stop_grad    : float (default 1e-4)
+                   Minimization stopping criterion when gradient "flat enough"
+    lambda_reg   : float (default 0.01)
+                   Regularization parameter weight that damps high-frequency noise.
     disp         : int (default=-1)
                    verbosity level;
                    -1    = quiet
@@ -159,22 +164,29 @@ def deconvolution_fmin(d, psf,
         convolve_method = convolve
 
     sigma = 0.8
-
+    # regularization high-pass from:
+    # https://stackoverflow.com/questions/6094957/high-pass-filter-for-image-processing-in-python-by-using-scipy-numpy
+    kernel = np.array([[-1, -1, -1],
+                       [-1,  8, -1],
+                       [-1, -1, -1]])
     def f(If):
+        
         I = np.reshape(If, d.shape)
-        return np.linalg.norm(d - convolve_method(I, psf, 'same'))**2 / (2*sigma)
+        reg_term = lambda_reg/2.0 * np.linalg.norm(convolve_method(I, kernel))**2
+        return np.linalg.norm(d - convolve_method(I, psf, 'same'))**2 / (2*sigma) + reg_term
         
     def g(If):
         I = np.reshape(If, d.shape)
         diff = d - convolve_method(I, psf, 'same')
-        return -(convolve_method(diff, psf[::-1,::-1], 'same')/sigma).ravel()
+        reg_term = lambda_reg * convolve_method(convolve_method(I, kernel, 'same'), kernel, 'same')
+        return -(convolve_method(diff, psf[::-1,::-1], 'same')/sigma).ravel() + reg_term.ravel()
 
     # fprime_test = scipy.optimize.optimize._approx_fprime_helper(d.ravel(), f, epsilon=1e-8)
     # g_test = g(d.ravel())
     # set_trace()
     # x0 = np.full(d.shape, 0.5).ravel()
     x0 = d.ravel()
-    image, f, res_info = fmin_l_bfgs_b(f, x0, fprime=g, maxiter=maxiter, disp=disp)
+    image, f, res_info = fmin_l_bfgs_b(f, x0, fprime=g, maxiter=maxiter, disp=disp, pgtol=stop_grad)
     return image.reshape(d.shape)
     # res = optimize.minimize(f, d.ravel(), jac=g, method='CG')
     # return np.reshape(res.x, d.shape)
