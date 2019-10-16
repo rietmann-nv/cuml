@@ -1,18 +1,18 @@
-# 
+#
 # Copyright (c) 2019, NVIDIA CORPORATION.
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# 
+#
 
 import numpy as np
 from scipy.signal import convolve2d, fftconvolve
@@ -65,7 +65,7 @@ def richardson_lucy(d,
 
     where ^* is a vertical + horizontal mirror
 
-    
+
 
     """
     # Note: convolve optimization taken from skimage's richardson_lucy implementation
@@ -98,7 +98,7 @@ def richardson_lucy(d,
                 print("{}:|ut-u_t+1|=".format(i), diff_norm_u)
             if np.mod(i, disp) == 0:
                 print("{}:|ut-u_t+1|=".format(i), diff_norm_u)
-            
+
         if disp > 0:
             if i == maxiter:
                 print("STOPPING DUE TO MAXIMUM NUMBER OF ITERATIONS: ", maxiter)
@@ -114,10 +114,9 @@ def deconvolution_fmin(d, psf,
                        stop_grad=1e-4,
                        lambda_reg=0.01,
                        disp=-1):
-    """
-    Computes the deconvolution of the data `d` created with `psf` using an
+    """Computes the deconvolution of the data `d` created with `psf` using an
     iterative numerical optimization technique.
-    
+
     Arguments
     ---------
     d            : array
@@ -145,6 +144,26 @@ def deconvolution_fmin(d, psf,
     Algorithm
     ---------
 
+    Instead of an explicitly iterative algorithm such as Richardson-Lucy, this
+    method frames the deconvolution as a numerical minimization (which is
+    implicitly iterative).
+
+    Consider the functional ("loss") J(I)
+
+              ||d - P (x) I||^2     l
+       J(I) = ---------------    + --- ||H (x) I||^2
+                  2 sigma           2
+
+    and its gradient G(J(I))
+
+       G(J(I)) = P^* (x) (D - P (x) I) + l H (x) (H (x) I)
+
+    where `l` is the regularization penalty and `H` is a high-pass filter matrix.
+
+    By passing this into an L-BFGS minimization routine, we retrieve a
+    deconvolved image. Raising or lowering `l` allows the user to increase or
+    decrease noise reduction (respectively).
+
     """
 
     # Note: convolve optimization taken from skimage's richardson_lucy implementation
@@ -159,9 +178,13 @@ def deconvolution_fmin(d, psf,
     time_ratio = 40.032 * fft_time / direct_time
 
     if time_ratio <= 1 or len(d.shape) > 2:
+        if disp > 0:
+            print("Using FFTCONVOLVE")
         convolve_method = fftconvolve
     else:
-        convolve_method = convolve
+        if disp > 0:
+            print("Using convolve2d")
+        convolve_method = convolve2d
 
     sigma = 0.8
     # regularization high-pass from:
@@ -170,24 +193,16 @@ def deconvolution_fmin(d, psf,
                        [-1,  8, -1],
                        [-1, -1, -1]])
     def f(If):
-        
         I = np.reshape(If, d.shape)
         reg_term = lambda_reg/2.0 * np.linalg.norm(convolve_method(I, kernel))**2
         return np.linalg.norm(d - convolve_method(I, psf, 'same'))**2 / (2*sigma) + reg_term
-        
+
     def g(If):
         I = np.reshape(If, d.shape)
         diff = d - convolve_method(I, psf, 'same')
         reg_term = lambda_reg * convolve_method(convolve_method(I, kernel, 'same'), kernel, 'same')
         return -(convolve_method(diff, psf[::-1,::-1], 'same')/sigma).ravel() + reg_term.ravel()
 
-    # fprime_test = scipy.optimize.optimize._approx_fprime_helper(d.ravel(), f, epsilon=1e-8)
-    # g_test = g(d.ravel())
-    # set_trace()
-    # x0 = np.full(d.shape, 0.5).ravel()
     x0 = d.ravel()
     image, f, res_info = fmin_l_bfgs_b(f, x0, fprime=g, maxiter=maxiter, disp=disp, pgtol=stop_grad)
     return image.reshape(d.shape)
-    # res = optimize.minimize(f, d.ravel(), jac=g, method='CG')
-    # return np.reshape(res.x, d.shape)
-    
