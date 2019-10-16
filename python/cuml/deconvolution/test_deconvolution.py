@@ -19,12 +19,13 @@ def test_sklearn():
     # poisson noise assumption is common, particularly in astronomy (CCD sensors)
     d += (np.random.poisson(25, size=d.shape) - 10) / 255
 
-    iter = 10
-    astro_deconv3 = deconvolution_fmin(d.copy(), psf.copy(), maxiter=10, disp=1)
-    astro_deconv = richardson_lucy(d.copy(), psf.copy(), disp=1, maxiter=iter)
-    astro_deconv2 = restoration.richardson_lucy(d.copy(), psf.copy(), iterations=iter)
-    
-    
+    num_iter = 10
+    astro_deconv3 = deconvolution_fmin(d.copy(), psf.copy(), maxiter=num_iter, disp=1)
+    astro_deconv = richardson_lucy(d.copy(), psf.copy(), disp=1, maxiter=num_iter)
+    astro_deconv2 = restoration.richardson_lucy(d.copy(), psf.copy(), iterations=num_iter)    
+
+    astro_deconv3_conv = convolve2d(astro_deconv3, psf, 'same')
+
     f, ax = plt.subplots(1, 5, figsize=(8, 5))
     
     for a in (ax[0], ax[1], ax[2], ax[3], ax[4]):
@@ -35,18 +36,20 @@ def test_sklearn():
     ax[0].set_title("Orig.")
     ax[1].imshow(d, vmin=astro.min(), vmax=astro.max())
     ax[1].set_title("Conv(psf) + noise")
-    ax[2].imshow(astro_deconv, vmin=astro.min(), vmax=astro.max())
-    ax[2].set_title("My Deconv")
-    ax[3].imshow(astro_deconv2, vmin=astro.min(), vmax=astro.max())
-    ax[3].set_title("Sk-Image\nDeconv")
-    ax[3].imshow(astro_deconv3, vmin=astro.min(), vmax=astro.max())
-    ax[3].set_title("Fmin\nDeconv")
+    ax[2].imshow(astro_deconv3_conv, vmin=astro.min(), vmax=astro.max())
+    ax[2].set_title("Fmin Deconv + Conv(psf)")
+    ax[3].imshow(astro_deconv, vmin=astro.min(), vmax=astro.max())
+    ax[3].set_title("My Deconv")
+    # ax[3].imshow(astro_deconv2, vmin=astro.min(), vmax=astro.max())
+    # ax[3].set_title("Sk-Image\nDeconv")
+    ax[4].imshow(astro_deconv3, vmin=astro.min(), vmax=astro.max())
+    ax[4].set_title("Fmin\nDeconv")
 
     f.subplots_adjust(wspace=0.02, hspace=0.2,
                       top=0.9, bottom=0.05, left=0, right=1)
     
 def orig():
-
+    """ Taken from sk-image's documentation on deconvolution"""
     astro = color.rgb2gray(data.astronaut())
 
     psf = np.ones((5, 5)) / 25

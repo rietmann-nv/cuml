@@ -158,7 +158,7 @@ def deconvolution_fmin(d, psf,
     else:
         convolve_method = convolve
 
-    sigma = 0.5
+    sigma = 0.8
 
     def f(If):
         I = np.reshape(If, d.shape)
@@ -167,12 +167,15 @@ def deconvolution_fmin(d, psf,
     def g(If):
         I = np.reshape(If, d.shape)
         diff = d - convolve_method(I, psf, 'same')
-        return (convolve_method(diff, psf[::-1,::-1], 'same')/sigma).ravel()
+        return -(convolve_method(diff, psf[::-1,::-1], 'same')/sigma).ravel()
 
     # fprime_test = scipy.optimize.optimize._approx_fprime_helper(d.ravel(), f, epsilon=1e-8)
     # g_test = g(d.ravel())
     # set_trace()
-    # image, f, res_info = fmin_l_bfgs_b(f, np.full(d.shape, 0.5).ravel(), fprime=g, maxiter=maxiter, disp=disp)
-    res = optimize.minimize(f, d.ravel(), jac=g, method='CG')
-
-    return np.reshape(res.x, d.shape)
+    # x0 = np.full(d.shape, 0.5).ravel()
+    x0 = d.ravel()
+    image, f, res_info = fmin_l_bfgs_b(f, x0, fprime=g, maxiter=maxiter, disp=disp)
+    return image.reshape(d.shape)
+    # res = optimize.minimize(f, d.ravel(), jac=g, method='CG')
+    # return np.reshape(res.x, d.shape)
+    
