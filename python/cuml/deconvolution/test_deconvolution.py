@@ -5,7 +5,7 @@ from skimage import color, data, restoration
 from scipy.signal import convolve2d
 
 # from cuml.deconvolution.deconvolution import richardson_lucy
-from deconvolution import richardson_lucy, deconvolution_fmin, cupy_fftconvolve
+from deconvolution import richardson_lucy, deconvolution_fmin, deconvolution_fmin_poisson, cupy_fftconvolve
 
 from scipy.signal import convolve2d as conv2
 from scipy.signal import fftconvolve
@@ -49,6 +49,7 @@ def test_sklearn():
     d += (np.random.poisson(25, size=d.shape) - 10) / 255
 
     num_iter = 10
+    astro_deconv4 = deconvolution_fmin_poisson(d.copy(), psf.copy(), maxiter=2*num_iter, disp=1)
     astro_deconv3 = deconvolution_fmin(d.copy(), psf.copy(), maxiter=2*num_iter, disp=1)
     start = timer()
     astro_deconv = richardson_lucy(d.copy(), psf.copy(), disp=-1, maxiter=num_iter)
@@ -75,14 +76,17 @@ def test_sklearn():
     ax[0].set_title("Orig.")
     ax[1].imshow(d, vmin=astro.min(), vmax=astro.max())
     ax[1].set_title("Conv(psf) + noise")
-    ax[2].imshow(astro_deconv3_conv, vmin=astro.min(), vmax=astro.max())
-    ax[2].set_title("Fmin Deconv\n + Conv(psf)")
-    ax[3].imshow(astro_deconv, vmin=astro.min(), vmax=astro.max())
-    ax[3].set_title("My R-L Deconv")
+    # ax[1].imshow(astro_deconv3_conv, vmin=astro.min(), vmax=astro.max())
+    # ax[1].set_title("Fmin Deconv\n + Conv(psf)")
+    ax[2].imshow(astro_deconv, vmin=astro.min(), vmax=astro.max())
+    ax[2].set_title("My R-L Deconv")
     # ax[3].imshow(astro_deconv2, vmin=astro.min(), vmax=astro.max())
     # ax[3].set_title("Sk-Image\nDeconv")
-    ax[4].imshow(astro_deconv3, vmin=astro.min(), vmax=astro.max())
-    ax[4].set_title("Fmin Deconv")
+    ax[3].imshow(astro_deconv3, vmin=astro.min(), vmax=astro.max())
+    ax[3].set_title("Fmin Gauss\n Deconv")
+
+    ax[4].imshow(astro_deconv4, vmin=astro.min(), vmax=astro.max())
+    ax[4].set_title("Fmin Poiss\n Deconv")
 
     f.subplots_adjust(wspace=0.02, hspace=0.2,
                       top=0.9, bottom=0.05, left=0, right=1)

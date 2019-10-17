@@ -132,7 +132,6 @@ def richardson_lucy(d,
 
     return utp1
 
-
 def deconvolution_fmin(d, psf,
                        maxiter=10,
                        stop_delta_u=1e-1,
@@ -140,7 +139,8 @@ def deconvolution_fmin(d, psf,
                        lambda_reg=0.01,
                        disp=-1):
     """Computes the deconvolution of the data `d` created with `psf` using an
-    iterative numerical optimization technique.
+    iterative numerical optimization technique that maximizes a likelihood
+    assuming a gaussian noise distribution.
 
     Arguments
     ---------
@@ -219,7 +219,7 @@ def deconvolution_fmin(d, psf,
                        [-1, -1, -1]])
     def f(If):
         I = np.reshape(If, d.shape)
-        reg_term = lambda_reg/2.0 * np.linalg.norm(convolve_method(I, kernel))**2
+        reg_term = lambda_reg/2.0 * np.linalg.norm(convolve_method(I, kernel, 'same'))**2
         return np.linalg.norm(d - convolve_method(I, psf, 'same'))**2 / (2*sigma) + reg_term
 
     def g(If):
@@ -230,4 +230,74 @@ def deconvolution_fmin(d, psf,
 
     x0 = d.ravel()
     image, f, res_info = fmin_l_bfgs_b(f, x0, fprime=g, maxiter=maxiter, disp=disp, pgtol=stop_grad)
+    return image.reshape(d.shape)
+
+
+def deconvolution_fmin_poisson(d, psf,
+                               maxiter=10,
+                               stop_delta_u=1e-1,
+                               stop_grad=1e-4,
+                               lambda_reg=0.01,
+                               disp=-1):
+    """Computes the deconvolution of the data `d` created with `psf` using an
+    iterative numerical optimization technique that assumes a likelihood with a
+    poissonian noise distribution.
+
+    Arguments
+    ---------
+    d            : array
+                   recorded data (d = I + e)
+    psf          : array
+                   point spread kernel
+    maxiter      : int (default 10)
+                   maximumum number of R-L iterations
+    stop_delta_u : float (default 1e-8)
+                   stop when ||u_{t+1} - u_t|| < 'stop_delta_u'
+    stop_grad    : float (default 1e-4)
+                   Minimization stopping criterion when gradient "flat enough"
+    lambda_reg   : float (default 0.01)
+                   Regularization parameter weight that damps high-frequency noise.
+    disp         : int (default=-1)
+                   verbosity level;
+                   -1    = quiet
+                   1-100 = display info every `disp` iterations
+                   >100  = maximum verbosity
+    Returns
+    --------
+    image : array
+            deconvolved image
+
+    Algorithm
+    ---------
+    This uses a likelihood that assumes a poissonian distribution.
+
+    """
+
+    convolve_method = fftconvolve
+
+    # regularization high-pass from:
+    # https://stackoverflow.com/questions/6094957/high-pass-filter-for-image-processing-in-python-by-using-scipy-numpy
+    kernel = np.array([[-1, -1, -1],
+                       [-1,  8, -1],
+                       [-1, -1, -1]])
+
+    def f(Of):
+        O = np.reshape(Of, d.shape)
+        I = d
+        reg_term = lambda_reg/2.0 * np.linalg.norm(convolve_method(I, kernel, 'same'))**2
+        ll_all = I * np.log(convolve_method(O, psf, 'same')) - convolve_method(O, psf, 'same')
+        return -ll_all.sum() + reg_term
+
+    def g(Of):
+        O = np.reshape(Of, d.shape)
+        I = d
+        gll = convolve_method(I/convolve_method(O, psf, 'same'), psf,'same') - convolve_method(np.full(d.shape, 1), psf, 'same')
+        reg_term = lambda_reg * convolve_method(convolve_method(I, kernel, 'same'), kernel, 'same')
+        return -gll.ravel() + reg_term.ravel()
+
+    x0 = d.ravel()
+    bounds = [(0, None)]*x0.size
+    image, f, res_info = fmin_l_bfgs_b(f, x0, fprime=g,
+                                       bounds=bounds,
+                                       maxiter=maxiter, disp=disp, pgtol=stop_grad)
     return image.reshape(d.shape)
