@@ -1,4 +1,5 @@
 import jax.numpy as np
+import jax.numpy as numpy
 from jax import random
 
 def compute_psi(Pj, O):
@@ -9,7 +10,8 @@ def compute_psi(Pj, O):
     ni = no - np + 1
     mi = mo - mp + 1
 
-    psi = np.zeros((ni*np, mi*mp), dtype=np.complex64)
+    # psi = numpy.zeros((ni*np, mi*mp), dtype=numpy.complex64)
+    psi = []
     
     # each "probe" 'Pj' is multiplied against 'O' pointwise. Accumulate the tiled result in a list.
     for i_n in range(ni):
@@ -43,9 +45,9 @@ def psi_transpose(psi):
     return psiT
     
 
-def compute_Mi(psi, nj, O_shape):
+def compute_Mi(psi, nj, P_shape):
 
-    Mi2 = np.zeros(O_shape, dtype=np.complex64)
+    Mi2 = np.zeros(P_shape, dtype=np.complex64)
     for j in range(nj):
         Mi2 += np.abs(np.fft.fftn(psi[j]))**2
 

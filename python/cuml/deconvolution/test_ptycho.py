@@ -22,12 +22,16 @@ def test_psi():
 
     psiT = psi_transpose(psi)
 
-    M = 9*[None]
-    for i_n in range(9):
-        M[i_n] = 9*[None]
+    ni = len(psiT)
+    mi = len(psiT[0])
 
-    for i_n in range(9):
-        for i_m in range(9):
-            M[i_n][i_m] = compute_Mi(psiT[i_n][i_m], 3, O.shape)
+    # pre-allocate M
+    M = ni*[None]
+    for i_n in range(ni):
+        M[i_n] = mi*[None]
 
-    print M
+    for i_n in range(ni):
+        for i_m in range(mi):
+            M[i_n][i_m] = compute_Mi(psiT[i_n][i_m], 3, P1.shape)
+
+    print("M=", M)
