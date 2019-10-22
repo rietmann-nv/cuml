@@ -22,15 +22,15 @@ import scipy.optimize as optimize
 import scipy
 from IPython.core.debugger import set_trace
 from scipy import fftpack
+import matplotlib.pyplot as plt
 
-
-def cupy_fftconvolve(h_I, h_psf, mode="same"):
+def cupy_fftconvolve(u_I, u_psf, mode="same"):
     """Limited CUPY port of scipy.signal.fftconvolve"""
     if mode is not "same":
         raise Exception("Only 'same' mode supported for now")
 
-    I = cp.array(h_I)
-    psf = cp.array(h_psf)
+    I = cp.array(u_I)
+    psf = cp.array(u_psf)
 
     s1 = np.array(I.shape)
     s2 = np.array(psf.shape)
@@ -39,7 +39,7 @@ def cupy_fftconvolve(h_I, h_psf, mode="same"):
     fshape = (shape[0], shape[1])
 
     axes = np.array([0, 1])
-
+    
     sp1 = cp.fft.rfftn(I, fshape, axes=axes)
     sp2 = cp.fft.rfftn(psf, fshape, axes=axes)
     ret = cp.fft.irfftn(sp1 * sp2, fshape, axes=axes)
@@ -48,7 +48,23 @@ def cupy_fftconvolve(h_I, h_psf, mode="same"):
         ret = scipy.signal.signaltools._centered(ret, I.shape)
 
     return ret
-    
+
+def richardson_lucy_gpu(d,
+                        psf,
+                        stop_delta_u=1e-8,
+                        maxiter=10,
+                        disp=-1):
+
+    ut = cp.full(d.shape, 0.5)
+    utp1 = ut
+
+    for _ in range(maxiter):
+        utp1 = ut * cupy_fftconvolve(d / cupy_fftconvolve(ut, psf, 'same'), psf, 'same')
+        ut = utp1
+
+    return utp1
+
+
 def richardson_lucy(d,
                     psf,
                     stop_delta_u=1e-8,
@@ -237,7 +253,7 @@ def deconvolution_fmin_poisson(d, psf,
                                maxiter=10,
                                stop_delta_u=1e-1,
                                stop_grad=1e-4,
-                               lambda_reg=0.01,
+                               lambda_reg=0.00001,
                                disp=-1):
     """Computes the deconvolution of the data `d` created with `psf` using an
     iterative numerical optimization technique that assumes a likelihood with a
@@ -277,25 +293,47 @@ def deconvolution_fmin_poisson(d, psf,
 
     # regularization high-pass from:
     # https://stackoverflow.com/questions/6094957/high-pass-filter-for-image-processing-in-python-by-using-scipy-numpy
-    kernel = np.array([[-1, -1, -1],
-                       [-1,  8, -1],
-                       [-1, -1, -1]])
+    kernel = np.array([[-1., -1., -1.],
+                       [-1.,  8., -1.],
+                       [-1., -1., -1.]])
 
     def f(Of):
         O = np.reshape(Of, d.shape)
-        I = d
-        reg_term = lambda_reg/2.0 * np.linalg.norm(convolve_method(I, kernel, 'same'))**2
-        ll_all = I * np.log(convolve_method(O, psf, 'same')) - convolve_method(O, psf, 'same')
+        reg_term = lambda_reg/2.0 * np.linalg.norm(convolve_method(O, kernel, 'same'))**2
+        O_star_psf = convolve_method(O, psf, 'same')
+        O_star_psf = np.abs(O_star_psf)
+        ll_all = d * np.log(O_star_psf) - O_star_psf
         return -ll_all.sum() + reg_term
 
     def g(Of):
         O = np.reshape(Of, d.shape)
-        I = d
-        gll = convolve_method(I/convolve_method(O, psf, 'same'), psf,'same') - convolve_method(np.full(d.shape, 1), psf, 'same')
-        reg_term = lambda_reg * convolve_method(convolve_method(I, kernel, 'same'), kernel, 'same')
-        return -gll.ravel() + reg_term.ravel()
+        O_star_psf = convolve_method(O, psf, 'same')
+        gll = convolve_method(d/O_star_psf, psf, 'same') - convolve_method(np.full(d.shape, 1.0), psf, 'same')
+        reg_term = lambda_reg * convolve_method(convolve_method(O, kernel, 'same'), kernel, 'same')
+        # return -gll.ravel() + reg_term.ravel()
+        gll_an = -gll.ravel() + reg_term.ravel()
+        return gll_an
+        # return -gll.ravel()
+    # gll_fd = scipy.optimize.optimize._approx_fprime_helper(Of, f, 1e-5)
+        # print("|gll_an - gll_fd|=", np.linalg.norm(gll_an - gll_fd))
+        # print("{} vs {}", gll_an, gll_fd)
+        # return gll_fd
+        
 
     x0 = d.ravel()
+    # gll_fd = scipy.optimize.optimize._approx_fprime_helper(x0, f, 1e-5)
+    # gll_fd_img = np.reshape(gll_fd, d.shape)
+    # gll_an = g(x0)
+    # gll_an_img = np.reshape(gll_an, d.shape)
+    # f, ax = plt.subplots(1, 3, figsize=(8, 5), num=1, clear=True)
+    # plt.gray()
+    # ax[0].imshow(gll_fd_img)
+    # ax[0].set_title("FD.")
+    # ax[1].imshow(gll_an_img)
+    # ax[1].set_title("Analytical")
+    # ax[2].imshow(d)
+    # ax[2].set_title("Orig")
+    # return
     bounds = [(0, None)]*x0.size
     image, f, res_info = fmin_l_bfgs_b(f, x0, fprime=g,
                                        bounds=bounds,
