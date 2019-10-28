@@ -211,6 +211,7 @@ if(BUILD_PRIMS_TESTS)
       prims/knn.cu
       prims/kselection.cu
       prims/label.cu
+      prims/lbfgsb.cpp
       prims/linearReg.cu
       prims/log.cu
       prims/logisticReg.cu
@@ -265,5 +266,10 @@ if(BUILD_PRIMS_TESTS)
       gtestlib
       gtest_mainlib
       ${PRIMS_LINK_LIBRARIES})
+
+    target_include_directories(prims
+      PRIVATE
+      "/home/max/dev/cuml/cpp/src_prims/optimization/Eigen"
+      )
 
 endif(BUILD_PRIMS_TESTS)

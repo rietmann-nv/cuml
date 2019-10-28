@@ -33,12 +33,24 @@ void testf(std::function<void(double*, void*)> pywrapper, void* pyf) {
   pywrapper(num2, pyf);
 }
 
-enum LBFGSB_RESULT { LBFGSB_STOP_GTOL, LBFGSB_STOP_ITER, LBFGSB_STOP_FTOL };
+enum LBFGSB_RESULT {
+  LBFGSB_INCOMPLETE,
+  LBFGSB_STOP_GTOL,
+  LBFGSB_STOP_ITER,
+  LBFGSB_STOP_FTOL
+};
 
 class Batched_LBFGS_B {
-  void minimize(const std::vector<double>& fx0,
-                const std::vector<Eigen::VectorXd>& gx0,
-                std::vector<Eigen::VectorXd>& x, std::string& info_str);
+ public:
+  LBFGSB_RESULT minimize(
+    std::function<void(const std::vector<Eigen::VectorXd>& x,
+                       std::vector<double>& fx)>
+      f,
+    std::function<void(const std::vector<Eigen::VectorXd>& x,
+                       std::vector<Eigen::VectorXd>& gfx)>
+      g,
+    const std::vector<double>& fx0, const std::vector<Eigen::VectorXd>& gx0,
+    std::vector<Eigen::VectorXd>& x, std::string& info_str);
 
   Batched_LBFGS_B(int verbosity = -1, int M = 10, double pgtol = 1e-5,
                   double factr = 1e7, int maxiter = 1000, int maxls = 20);
@@ -74,6 +86,31 @@ Batched_LBFGS_B::Batched_LBFGS_B(int verbosity, int M, double pgtol,
     m_factr(factr),
     m_maxiter(maxiter),
     m_maxls(maxls) {}
+
+LBFGSB_RESULT Batched_LBFGS_B::minimize(
+  std::function<void(const std::vector<Eigen::VectorXd>& x,
+                     std::vector<double>& fx)>
+    f,
+  std::function<void(const std::vector<Eigen::VectorXd>& x,
+                     std::vector<Eigen::VectorXd>& gfx)>
+    g,
+  const std::vector<double>& fx0, const std::vector<Eigen::VectorXd>& gx0,
+  std::vector<Eigen::VectorXd>& x, std::string& info_str) {
+  const int batchSize = x.size();
+  const int N = x[0].size();
+  std::vector<LBFGSB_RESULT> status(batchSize);
+  std::vector<Eigen::VectorXd> xk(batchSize);
+  std::vector<double> fk(batchSize);
+  std::vector<Eigen::VectorXd> gk(batchSize);
+  for (int i = 0; i < batchSize; i++) {
+    status[i] = LBFGSB_INCOMPLETE;
+    gk[i].resize(N);
+    xk[i] = x[i];
+  }
+  for (int k = 0; k < m_maxiter; k++) {
+    
+  }
+}
 
 /**
    Implements Alg. 7.4 from "Numerical Optimization"
