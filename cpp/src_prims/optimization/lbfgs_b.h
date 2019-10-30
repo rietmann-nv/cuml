@@ -37,37 +37,57 @@ enum LBFGSB_RESULT {
   LBFGSB_INCOMPLETE,
   LBFGSB_STOP_GTOL,
   LBFGSB_STOP_ITER,
+  LBFGSB_STOP_MAXLS,
   LBFGSB_STOP_FTOL
 };
 
+std::string LBFGSB_RESULT_STRING(LBFGSB_RESULT res) {
+  switch (res) {
+    case LBFGSB_INCOMPLETE:
+      return "LBFGSB_INCOMPLETE";
+    case LBFGSB_STOP_GTOL:
+      return "LBFGSB_STOP_GTOL";
+    case LBFGSB_STOP_FTOL:
+      return "LBFGSB_STOP_FTOL";
+    case LBFGSB_STOP_ITER:
+      return "LBFGSB_STOP_ITER";
+    case LBFGSB_STOP_MAXLS:
+      return "LBFGSB_STOP_MAXLS";
+    default:
+      return "UKNOWN_RESULT";
+  }
+}
+
 class Batched_LBFGS_B {
  public:
-  LBFGSB_RESULT minimize(
-    std::function<void(const std::vector<Eigen::VectorXd>& x,
-                       std::vector<double>& fx)>
-      f,
-    std::function<void(const std::vector<Eigen::VectorXd>& x,
-                       std::vector<Eigen::VectorXd>& gfx)>
-      g,
-    const std::vector<double>& fx0, const std::vector<Eigen::VectorXd>& gx0,
-    std::vector<Eigen::VectorXd>& x, std::string& info_str);
+  void minimize(std::function<void(const std::vector<Eigen::VectorXd>& x,
+                                   std::vector<double>& fx)>
+                  f,
+                std::function<void(const std::vector<Eigen::VectorXd>& x,
+                                   std::vector<Eigen::VectorXd>& gfx)>
+                  g,
+                const std::vector<double>& fx0,
+                const std::vector<Eigen::VectorXd>& gx0,
+                std::vector<Eigen::VectorXd>& x,
+                std::vector<LBFGSB_RESULT>& status, std::string& info_str);
 
-  Batched_LBFGS_B(int verbosity = -1, int M = 10, double pgtol = 1e-5,
-                  double factr = 1e7, int maxiter = 1000, int maxls = 20);
+  Batched_LBFGS_B(int verbosity = -1, int maxiter = 1000, int M = 10,
+                  double pgtol = 1e-5, double factr = 1e7, int maxls = 20);
 
  private:
   void compute_pk_single(const Eigen::VectorXd& gk,
                          const std::deque<Eigen::VectorXd>& sk,
                          const std::deque<Eigen::VectorXd>& yk,
-                         Eigen::Ref<Eigen::VectorXd> pk);
+                         Eigen::Ref<Eigen::VectorXd> pk, int k);
 
   int
     m_verbosity;  // -1,0=silent, 1-100 (output every N steps), >100 (maximum output every step)
+  int m_maxiter;   // stop when 'L-BFGS iter' > maxiter
   int m_M;         // number of previous gradients to store
   double m_pgtol;  // stop when ||g|| < pgtol
   double m_factr;  // stop when ||f_k-f_k+1|| < factr * MACHINE_EPS
-  int m_maxiter;   // stop when 'L-BFGS iter' > maxiter
-  int m_maxls;     // reset storage when "line-search iterations" > maxls
+
+  int m_maxls;  // reset storage when "line-search iterations" > maxls
   std::vector<std::vector<std::pair<int, int>>>
     m_bounds;                                       // parameter box constraints
   int m_k;                                          // current iteration
@@ -78,16 +98,16 @@ class Batched_LBFGS_B {
   std::vector<Eigen::VectorXd> m_x0;                // storage yk (column-major)
 };
 
-Batched_LBFGS_B::Batched_LBFGS_B(int verbosity, int M, double pgtol,
-                                 double factr, int maxiter, int maxls)
+Batched_LBFGS_B::Batched_LBFGS_B(int verbosity, int maxiter, int M,
+                                 double pgtol, double factr, int maxls)
   : m_verbosity(verbosity),
+    m_maxiter(maxiter),
     m_M(M),
     m_pgtol(pgtol),
     m_factr(factr),
-    m_maxiter(maxiter),
     m_maxls(maxls) {}
 
-LBFGSB_RESULT Batched_LBFGS_B::minimize(
+void Batched_LBFGS_B::minimize(
   std::function<void(const std::vector<Eigen::VectorXd>& x,
                      std::vector<double>& fx)>
     f,
@@ -95,21 +115,125 @@ LBFGSB_RESULT Batched_LBFGS_B::minimize(
                      std::vector<Eigen::VectorXd>& gfx)>
     g,
   const std::vector<double>& fx0, const std::vector<Eigen::VectorXd>& gx0,
-  std::vector<Eigen::VectorXd>& x, std::string& info_str) {
+  std::vector<Eigen::VectorXd>& x, std::vector<LBFGSB_RESULT>& status,
+  std::string& info_str) {
   const int batchSize = x.size();
   const int N = x[0].size();
-  std::vector<LBFGSB_RESULT> status(batchSize);
+  status.resize(batchSize);
+
+  m_M_sk.resize(batchSize);
+  m_M_yk.resize(batchSize);
+
   std::vector<Eigen::VectorXd> xk(batchSize);
+  std::vector<Eigen::VectorXd> xkp1(batchSize);
+  std::vector<Eigen::VectorXd> pk(batchSize);
+  std::vector<double> alpha(batchSize);
   std::vector<double> fk(batchSize);
+  std::vector<double> fkp1(batchSize);
   std::vector<Eigen::VectorXd> gk(batchSize);
+  std::vector<Eigen::VectorXd> gkp1(batchSize);
   for (int i = 0; i < batchSize; i++) {
     status[i] = LBFGSB_INCOMPLETE;
     gk[i].resize(N);
     xk[i] = x[i];
   }
   for (int k = 0; k < m_maxiter; k++) {
-    
-  }
+    for (int ib = 0; ib < batchSize; ib++) {
+      // compute search direction pk
+      if (k == 0) {
+        // first step just does steepest descent
+        pk[ib] = -gx0[ib];
+        alpha[ib] = 0.05;
+      } else {
+        compute_pk_single(gk[ib], m_M_sk[ib], m_M_yk[ib], pk[ib], k);
+        alpha[ib] = 0.5;
+      }
+      if (m_verbosity >= 100) {
+        // std::cout << "pk=" << pk[ib] << "\n";
+        printf("pk=[");
+        for (int i = 0; i < pk[ib].size(); i++) {
+          printf("%e,", pk[ib][i]);
+        }
+        printf("]\n");
+      }
+    }
+
+    // line search
+    // TODO: Implement good line search
+    std::vector<bool> ls_success(batchSize, false);
+    for (int ils = 0; ils < m_maxls; ils++) {
+      f(xk, fk);
+      for (int ib = 0; ib < batchSize; ib++) {
+        if (ls_success[ib]) continue;
+        xkp1[ib] = xk[ib] + alpha[ib] * pk[ib];
+      }
+      f(xkp1, fkp1);
+      for (int ib = 0; ib < batchSize; ib++) {
+        if (ls_success[ib]) continue;
+        if (fkp1[ib] < fk[ib]) {
+          ls_success[ib] = true;
+          printf("k=%d, bid=%d: successful alpha=%f\n", k, ib, alpha[ib]);
+        } else {
+          printf("k=%d, bid=%d: unsuccessful alpha=%f\n", k, ib, alpha[ib]);
+        }
+        alpha[ib] *= 0.5;  // shrink stepsized by half;
+      }
+      // if all true, stop line search
+      if (std::all_of(ls_success.begin(), ls_success.end(),
+                      [](bool v) { return v; }))
+        break;
+
+      // if we needed all line-search iterations, return with error.
+      if (ils == m_maxls - 1) {
+        for (int ib = 0; ib < batchSize; ib++) {
+          if (ls_success[ib] == false) status[ib] = LBFGSB_STOP_MAXLS;
+          x = xk;
+          return;
+        }
+      }
+    }
+
+    // take step and update LBFGS-sk variable
+    for (int ib = 0; ib < batchSize; ib++) {
+      xkp1[ib] = xk[ib] + alpha[ib] * pk[ib];
+      m_M_sk[ib].push_back(xkp1[ib] - xk[ib]);
+      m_M_sk[ib].pop_front();
+    }
+
+    // update gradient and LBFGS-gk variables
+    g(xkp1, gkp1);
+    for (int ib = 0; ib < batchSize; ib++) {
+      m_M_yk[ib].push_back(gkp1[ib] - gk[ib]);
+      m_M_yk[ib].pop_front();
+      gk[ib] = gkp1[ib];
+    }
+
+    // stopping criterion
+    f(xk, fk);
+    f(xkp1, fkp1);
+    for (int ib = 0; ib < batchSize; ib++) {
+      auto g_norm = gk[ib].norm();
+      if (k % m_verbosity == 0 || m_verbosity >= 100) {
+        printf("k=%d, bid=%d: |f|=%e -> %e, |g|=%e\n", k, ib, std::abs(fk[ib]),
+               std::abs(fkp1[ib]), g_norm);
+      }
+      if (g_norm < m_pgtol) {
+        status[ib] = LBFGSB_STOP_GTOL;
+      }
+      if (status[ib] == LBFGSB_INCOMPLETE && k == m_maxiter - 1) {
+        status[ib] = LBFGSB_STOP_ITER;
+      }
+    }
+    bool stop = true;
+    for (int ib = 0; ib < batchSize; ib++) {
+      if (status[ib] == LBFGSB_INCOMPLETE) {
+        stop = false;
+      }
+    }
+    if (stop) break;
+    xk = xkp1;
+  }  // for k in maxiter
+  x = xk;
 }
 
 /**
@@ -118,17 +242,18 @@ LBFGSB_RESULT Batched_LBFGS_B::minimize(
 void Batched_LBFGS_B::compute_pk_single(const Eigen::VectorXd& gk,
                                         const std::deque<Eigen::VectorXd>& sk,
                                         const std::deque<Eigen::VectorXd>& yk,
-                                        Eigen::Ref<Eigen::VectorXd> pk) {
+                                        Eigen::Ref<Eigen::VectorXd> pk, int k) {
   Eigen::VectorXd q = gk;
-  Eigen::VectorXd alpha(m_M);
-  Eigen::VectorXd rho(m_M);
-  for (int i = m_M - 1; i >= 0; i--) {
+  int M = sk.size();
+  Eigen::VectorXd alpha(M);
+  Eigen::VectorXd rho(M);
+  for (int i = M - 1; i >= 0; i--) {
     alpha(i) = rho(i) * sk[i].dot(q);
     q = q - alpha(i) * yk[i];
   }
-  double gamma_k = sk[m_M - 1].dot(yk[m_M - 1]) / yk[m_M - 1].dot(yk[m_M - 1]);
+  double gamma_k = sk[M - 1].dot(yk[M - 1]) / yk[M - 1].dot(yk[M - 1]);
   Eigen::VectorXd r = gamma_k * q;
-  for (int i = 0; i < m_M; i++) {
+  for (int i = 0; i < M; i++) {
     double beta = rho(i) * yk[i].dot(r);
     r = r + sk[i] * (alpha(i) - beta);
   }

@@ -96,9 +96,27 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
       batched_g_rosenbrock(x, batchSize, ar, br, gfx);
     };
 
-    Batched_LBFGS_B opt;
-    
-
+    Batched_LBFGS_B opt(1, 10);
+    std::vector<LBFGSB_RESULT> status;
+    std::vector<Eigen::VectorXd> x0(batchSize);
+    for (int ib = 0; ib < batchSize; ib++) {
+      x0[ib] = Eigen::VectorXd::Zero(2);
+    }
+    std::string info_str;
+    std::vector<double> fx0;
+    f(x0, fx0);
+    std::vector<Eigen::VectorXd> gx0;
+    gf(x0, gx0);
+    opt.minimize(f, gf, fx0, gx0, x0, status, info_str);
+    for (int ib = 0; ib < batchSize; ib++) {
+      if (status[ib] != LBFGSB_STOP_GTOL) {
+        printf(
+          "MINIMIZATION WARNING: Stopped due to criterion other than "
+          "||gradient||: %s\n",
+          LBFGSB_RESULT_STRING(status[ib]).c_str());
+      }
+      printf("Res[%d]=(%e,%e)\n", ib, x0[ib][0], x0[ib][1]);
+    }
   }
   LBFGSBInputs<T> params;
 };
