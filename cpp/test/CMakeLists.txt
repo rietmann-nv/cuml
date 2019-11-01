@@ -262,10 +262,15 @@ if(BUILD_PRIMS_TESTS)
     add_dependencies(prims cub)
     add_dependencies(prims cutlass)
 
+    find_package(PythonLibs 2.7)
+    target_include_directories(prims PRIVATE ${PYTHON_INCLUDE_DIRS})
+
     target_link_libraries(prims
       gtestlib
       gtest_mainlib
-      ${PRIMS_LINK_LIBRARIES})
+      ${PRIMS_LINK_LIBRARIES}
+      ${PYTHON_LIBRARIES}
+      )
 
     target_include_directories(prims
       PRIVATE
