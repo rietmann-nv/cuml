@@ -7,7 +7,7 @@ from scipy.signal import convolve2d
 # from cuml.deconvolution.deconvolution import richardson_lucy
 from deconvolution import richardson_lucy, richardson_lucy_gpu
 from deconvolution import deconvolution_fmin, deconvolution_fmin_poisson
-from deconvolution import cupy_fftconvolve
+from deconvolution import cupy_fftconvolve, jax_convolve
 
 from scipy.signal import convolve2d as conv2
 from scipy.signal import fftconvolve
@@ -48,7 +48,7 @@ def test_fftconvolve_gpu(plot=False):
     d2_gpu = cupy_fftconvolve(astro.copy(), psf.copy())
     d2_cpu = cp.asnumpy(d2_gpu)
 
-    np.testing.assert_allclose(d, d2_cpu)
+    
 
     if plot:
         f, ax = plt.subplots(1, 2, figsize=(8, 5), num=1, clear=True)
@@ -61,7 +61,39 @@ def test_fftconvolve_gpu(plot=False):
         f.subplots_adjust(wspace=0.02, hspace=0.2,
                           top=0.9, bottom=0.05, left=0, right=1)
 
+    np.testing.assert_allclose(d, d2_cpu)
 
+
+def test_jaxconvolve(plot=False):
+    astro = astronaut()
+    # poisson noise assumption is common, particularly in astronomy (CCD sensors)
+    astro1 = astro + (np.random.poisson(25, size=astro.shape) - 10) / 255
+    astro2 = astro + (np.random.poisson(25, size=astro.shape) - 10) / 255
+
+    psf = np.ones((5, 5)) / 25
+    d = fftconvolve(astro1.copy(), psf.copy(), 'same')
+
+    d_jax, d2_jax = jax_convolve(astro1.copy(), astro2.copy(), psf.copy())
+
+    
+
+    if plot:
+        f, ax = plt.subplots(1, 3, figsize=(8, 5), num=1, clear=True)
+
+        plt.gray()
+        ax[0].imshow(d)
+        ax[0].set_title("FFTCONVOLVE\nCPU")
+        ax[1].imshow(d_jax)
+        ax[1].set_title("CONVOLVE\nJAX")
+        ax[2].imshow(d2_jax)
+        ax[2].set_title("CONVOLVE\nJAX 2")
+        f.subplots_adjust(wspace=0.02, hspace=0.2,
+                          top=0.9, bottom=0.05, left=0, right=1)
+
+    # np.testing.assert_allclose(d, d2_jax)
+    absmax = np.max(np.abs(d - d_jax))
+    idx = np.argmax(np.abs(d - d_jax))
+    print("max diff: ", absmax, d.flatten()[idx], "vs", d_jax.flatten()[idx])
 
 def test_fmin_poisson():
 

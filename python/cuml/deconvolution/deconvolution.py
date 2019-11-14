@@ -24,6 +24,9 @@ from IPython.core.debugger import set_trace
 from scipy import fftpack
 import matplotlib.pyplot as plt
 
+import jax.numpy as jp
+import jax
+
 def cupy_fftconvolve(u_I, u_psf, mode="same"):
     """Limited CUPY port of scipy.signal.fftconvolve"""
     if mode is not "same":
@@ -44,10 +47,54 @@ def cupy_fftconvolve(u_I, u_psf, mode="same"):
     sp2 = cp.fft.rfftn(psf, fshape, axes=axes)
     ret = cp.fft.irfftn(sp1 * sp2, fshape, axes=axes)
 
-    if mode is "same":
-        ret = scipy.signal.signaltools._centered(ret, I.shape)
+    # if mode is "same":
+        # ret = scipy.signal.signaltools._centered(ret, I.shape)
 
     return ret
+
+def jax_fftconvolve(u, psf):
+
+    s1 = np.array(I.shape)
+    s2 = np.array(psf.shape)
+    shape = np.maximum(s1, s2)
+    shape = s1 + s2 - 1
+    fshape = (shape[0], shape[1])
+
+    sp1 = jp.fft.fftn(u, fshape, axes=)
+
+def jax_convolve(u, u2, psf):
+    (h, w) = u.shape
+    (hp, wp) = psf.shape
+    assert hp == wp
+
+    # NCHW format
+    u_jax = np.zeros((2,1,h,w))
+    u_jax[0,0,:,:] = u[:,:]
+    u_jax[1,0,:,:] = u2[:,:]
+    # IOHW format
+    psf_jax = np.zeros((1, 1, hp, wp))
+    psf_jax[0, 0, :, :] = psf[:, :]
+    uc_jax = jax.lax.conv(u_jax, psf_jax, (1,1), 'SAME')
+
+    # put back into HW format
+    uc = np.zeros((h, w))
+    uc[:, :] = uc_jax[0, 0, :, :]
+    uc2 = np.zeros((h, w))
+    uc2[:, :] = uc_jax[1, 0, :, :]
+
+    return uc, uc2
+
+# def richardson_lucy_jax(d, psf, maxiter=10):
+#     (h, w) = d.shape
+#     ut = jp.full((1, 1, h, w), 0.5)
+#     utp1 = ut
+#     d_jp = jp.zeros((1, 1, h, w))
+#     d_jp[0,0,:,:] = d[:,:]
+#     psf_jp = jp.zeros()
+#     for _ in range(maxiter):
+#         d_ut_psf = d_jp / jax.lax.conv(ut, psf_jp, (1,1), 'SAME')
+#         utp1 = ut * jax.lax.conv(d_ut_psf, psf_jp, (1,1), 'SAME')
+
 
 def richardson_lucy_gpu(d,
                         psf,
