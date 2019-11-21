@@ -98,7 +98,7 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     params = ::testing::TestWithParam<LBFGSBInputs<T>>::GetParam();
     std::cout << "Running LBFGSB Test!\n";
 
-    int batchSize = 2;
+    int batchSize = 1;
     vector<double> ar(batchSize);
     vector<double> br(batchSize);
 
@@ -124,7 +124,7 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
       batched_h_rosenbrock(x, batchSize, ar, br, hfx);
     };
 
-    Batched_LBFGS_B opt(1, 100);
+    Batched_LBFGS_B opt(100, 100);
     std::vector<LBFGSB_RESULT> status;
     std::vector<Eigen::VectorXd> x0(batchSize);
     for (int ib = 0; ib < batchSize; ib++) {
@@ -170,6 +170,17 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     }
     printf("]\n");
 
+    auto check_status = [](std::vector<LBFGSB_RESULT>& status) {
+      for (auto& st : status) {
+        if (st != LBFGSB_STOP_GTOL) {
+          printf(
+            "MINIMIZATION WARNING: Stopped due to criterion other than "
+            "||gradient||: %s\n",
+            LBFGSB_RESULT_STRING(st).c_str());
+        }
+      }
+    };
+
     std::string info_str;
     std::vector<double> fx0;
     f(x0, fx0);
@@ -179,17 +190,9 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     std::vector<std::vector<Eigen::VectorXd>> xk_Newton_all;
     std::vector<Eigen::VectorXd> x0H = x0;
     opt.minimize(f, gf, fx0, gx0, x0, status, info_str, xk_all);
-    opt.minimizeNewton(f, gf, hf, x0H, status, info_str, xk_Newton_all);
-    for (int ib = 0; ib < batchSize; ib++) {
-      if (status[ib] != LBFGSB_STOP_GTOL) {
-        printf(
-          "MINIMIZATION WARNING: Stopped due to criterion other than "
-          "||gradient||: %s\n",
-          LBFGSB_RESULT_STRING(status[ib]).c_str());
-      }
-      printf("Res[%d]=(%e,%e)\n", ib, x0[ib][0], x0[ib][1]);
-    }
-
+    check_status(status);
+    // opt.minimizeNewton(f, gf, hf, x0H, status, info_str, xk_Newton_all);
+    // check_status(status);
     auto x_to_xy = [](std::vector<std::vector<Eigen::VectorXd>>& xin, int bid,
                       std::vector<double>& x, std::vector<double>& y) {
       // auto n_dof = xin[0][0].size() / 2;
@@ -203,7 +206,7 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     };
 
     // plot results
-    plt::subplot(2, 1, 1);
+    plt::subplot(batchSize, 1, 1);
     std::vector<double> x0t;
     std::vector<double> y0t;
     std::vector<double> x1t;
@@ -213,14 +216,15 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     std::vector<double> x1Ht;
     std::vector<double> y1Ht;
     x_to_xy(xk_all, 0, x0t, y0t);
-    x_to_xy(xk_all, 1, x1t, y1t);
-    x_to_xy(xk_Newton_all, 0, x0Ht, y0Ht);
-    x_to_xy(xk_Newton_all, 1, x1Ht, y1Ht);
-    plt::plot(x0t, y0t, "k-o", x0Ht, y0Ht, "g-o");
+    // x_to_xy(xk_all, 1, x1t, y1t);
+    // x_to_xy(xk_Newton_all, 0, x0Ht, y0Ht);
+    // x_to_xy(xk_Newton_all, 1, x1Ht, y1Ht);
+    plt::plot(x0t, y0t, "k-*");
+    // plt::plot(x0t, y0t, "k-*", x0Ht, y0Ht, "g--o");
     plt::plot({ar[0]}, {ar[0] * ar[0]}, "r*");
-    plt::subplot(2, 1, 2);
-    plt::plot(x1t, y1t, "k-", x1Ht, y1Ht, "g-");
-    plt::plot({ar[1]}, {ar[1] * ar[0]}, "r*");
+    // plt::subplot(2, 1, 2);
+    // plt::plot(x1t, y1t, "k-", x1Ht, y1Ht, "g-");
+    // plt::plot({ar[1]}, {ar[1] * ar[0]}, "r*");
     plt::show();
   }
   LBFGSBInputs<T> params;

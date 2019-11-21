@@ -247,6 +247,15 @@ void Batched_LBFGS_B::minimize(
   const std::vector<double>& fx0, const std::vector<Eigen::VectorXd>& gx0,
   std::vector<Eigen::VectorXd>& x, std::vector<LBFGSB_RESULT>& status,
   std::string& info_str, std::vector<std::vector<Eigen::VectorXd>>& xk_all) {
+  auto printvec = [](const std::vector<Eigen::VectorXd>& vec, int ib,
+                     std::string name) {
+    printf("%s=[", name.c_str());
+    for (int i = 0; i < vec[ib].size(); i++) {
+      printf("%e,", vec[ib][i]);
+    }
+    printf("]\n");
+  };
+
   const int batchSize = x.size();
   const int N = x[0].size();
   status.resize(batchSize);
@@ -265,9 +274,12 @@ void Batched_LBFGS_B::minimize(
   std::vector<Eigen::VectorXd> gk(batchSize);
   std::vector<Eigen::VectorXd> gkp1(batchSize);
   std::vector<Eigen::MatrixXd> Hk(batchSize);
+
+  std::vector<Eigen::VectorXd> sk(batchSize);
+  std::vector<Eigen::VectorXd> yk(batchSize);
   for (int i = 0; i < batchSize; i++) {
     status[i] = LBFGSB_INCOMPLETE;
-    gk[i].resize(N);
+    gk[i] = gx0[i];
     xk[i] = x[i];
     Hk[i] = Eigen::MatrixXd::Identity(N, N);
   }
@@ -281,19 +293,18 @@ void Batched_LBFGS_B::minimize(
         alpha[ib] = 0.05;
       } else {
         compute_pk_single(gk[ib], m_M_sk[ib], m_M_yk[ib], pk[ib], k);
-        alpha[ib] = 0.5;
+        // compute_pk_single_bfgs(gk[ib], sk[ib], yk[ib], Hk[ib], pk[ib]);
+
+        alpha[ib] = 1.0;
       }
       if (m_verbosity >= 100) {
         // std::cout << "pk=" << pk[ib] << "\n";
-        printf("pk=[");
-        for (int i = 0; i < pk[ib].size(); i++) {
-          printf("%e,", pk[ib][i]);
-        }
-        printf("]\n");
+        // printvec(pk, ib, "pk");
+        // printvec(gk, ib, "gk");
       }
     }
 
-    // line search
+    // backtracking line search
     // TODO: Implement good line search
     std::vector<bool> ls_success(batchSize, false);
     for (int ils = 0; ils < m_maxls; ils++) {
@@ -337,14 +348,16 @@ void Batched_LBFGS_B::minimize(
     for (int ib = 0; ib < batchSize; ib++) {
       xkp1[ib] = xk[ib] + alpha[ib] * pk[ib];
       m_M_sk[ib].push_back(xkp1[ib] - xk[ib]);
-      m_M_sk[ib].pop_front();
+      if (k > m_M) m_M_sk[ib].pop_front();
+      sk[ib] = xkp1[ib] - xk[ib];
     }
 
     // update gradient and LBFGS-gk variables
     g(xkp1, gkp1);
     for (int ib = 0; ib < batchSize; ib++) {
       m_M_yk[ib].push_back(gkp1[ib] - gk[ib]);
-      m_M_yk[ib].pop_front();
+      if (k > m_M) m_M_yk[ib].pop_front();
+      yk[ib] = gkp1[ib] - gk[ib];
       gk[ib] = gkp1[ib];
     }
 
@@ -390,6 +403,7 @@ void Batched_LBFGS_B::compute_pk_single(const Eigen::VectorXd& gk,
   Eigen::VectorXd alpha(M);
   Eigen::VectorXd rho(M);
   for (int i = M - 1; i >= 0; i--) {
+    rho(i) = 1.0 / yk[i].dot(sk[i]);
     alpha(i) = rho(i) * sk[i].dot(q);
     q = q - alpha(i) * yk[i];
   }
@@ -417,7 +431,7 @@ void Batched_LBFGS_B::compute_pk_single_bfgs(const Eigen::VectorXd& gk,
   MatrixXd Hkp1 = (MatrixXd::Identity(N, N) - rhok * sk * yk.transpose()) * Hk *
                     (MatrixXd::Identity(N, N) - rhok * yk * sk.transpose()) +
                   rhok * sk * sk.transpose();
-  pk = -Hkp1 * gk;  // use SD for now...
+  pk = -Hkp1 * gk;
   Hk = Hkp1;
 }
 
