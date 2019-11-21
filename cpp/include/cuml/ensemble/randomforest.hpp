@@ -15,7 +15,7 @@
  */
 
 #pragma once
-#include <treelite/c_api.h>
+#include <cuml/ensemble/treelite_defs.hpp>
 #include <cuml/tree/decisiontree.hpp>
 #include <map>
 
@@ -116,7 +116,10 @@ void print_rf_detailed(const RandomForestMetaData<T, L>* forest);
 template <class T, class L>
 void build_treelite_forest(ModelHandle* model,
                            const RandomForestMetaData<T, L>* forest,
-                           int num_features, int task_category);
+                           int num_features, int task_category,
+                           std::vector<unsigned char>& data);
+
+std::vector<unsigned char> save_model(ModelHandle model);
 
 // ----------------------------- Classification ----------------------------------- //
 
@@ -155,10 +158,10 @@ RF_metrics score(const cumlHandle& user_handle,
 
 RF_params set_rf_class_obj(int max_depth, int max_leaves, float max_features,
                            int n_bins, int split_algo, int min_rows_per_node,
-                           bool bootstrap_features, bool bootstrap, int n_trees,
-                           float rows_sample, int seed,
-                           CRITERION split_criterion, bool quantile_per_tree,
-                           int cfg_n_streams);
+                           float min_impurity_decrease, bool bootstrap_features,
+                           bool bootstrap, int n_trees, float rows_sample,
+                           int seed, CRITERION split_criterion,
+                           bool quantile_per_tree, int cfg_n_streams);
 
 // ----------------------------- Regression ----------------------------------- //
 

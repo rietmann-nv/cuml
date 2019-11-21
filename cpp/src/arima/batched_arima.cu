@@ -125,6 +125,9 @@ void forecast(cumlHandle& handle, int num_steps, int p, int d, int q,
         }
       });
   }
+
+  alloc->deallocate(d_y_, (p + num_steps) * batch_size, stream);
+  alloc->deallocate(d_vs_, (q + num_steps) * batch_size, stream);
 }
 
 void predict_in_sample(cumlHandle& handle, double* d_y, int num_batches,
@@ -174,6 +177,10 @@ void predict_in_sample(cumlHandle& handle, double* d_y, int num_batches,
                      counting + num_batches, [=] __device__(int bid) {
                        d_y_p[bid * nobs + (nobs - 1)] = d_y_fc[bid];
                      });
+    handle.getDeviceAllocator()->deallocate(
+      d_y_diff, sizeof(double) * num_batches * (nobs - 1), handle.getStream());
+    handle.getDeviceAllocator()->deallocate(
+      d_y_fc, sizeof(double) * num_batches, handle.getStream());
   }
 }
 
@@ -245,6 +252,8 @@ void batched_loglike(cumlHandle& handle, double* d_y, int num_batches, int nobs,
 
     batched_kalman_filter(handle, y_diff, nobs - d, d_Tar, d_Tma, p, q,
                           num_batches, loglike, d_vs);
+    allocator->deallocate(y_diff, sizeof(double) * num_batches * (nobs - 1),
+                          stream);
   } else {
     throw std::runtime_error("Not supported difference parameter: d=0, 1");
   }

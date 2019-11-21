@@ -14,10 +14,8 @@
 #
 
 import pytest
-import cudf
 import numpy as np
 
-from cuml.test.utils import np_to_cudf
 from cuml.tsa.stationarity import stationarity
 
 
@@ -28,18 +26,13 @@ def array_eq(ref, actual):
     return success, message
 
 
-@pytest.mark.parametrize('precision', ['single', 'double'])
-@pytest.mark.parametrize('input_type', ['numpy', 'cudf'])
+@pytest.mark.parametrize('precision', [np.float32, np.float64])
+@pytest.mark.parametrize('input_type', ['numpy'])
 def test_stationarity(precision, input_type):
     """Test the kpss stationarity check.
     Note: this test is intended to test the Python wrapper.
     Another more exhaustive test is part of the C++ unit tests.
     """
-    if precision == 'single':
-        dtype = np.float32
-    else:
-        dtype = np.float64
-
     inc_rates = [-0.7, 0.0, 0.5]
     offsets = [-0.3, 0.5, 0.0]
     d_ref = [1, 0, 1]
@@ -49,13 +42,12 @@ def test_stationarity(precision, input_type):
     np.random.seed(13)
     noise = np.random.normal(scale=0.1, size=num_samples)
 
-    np_df = np.zeros((num_samples, len(d_ref)), order="F", dtype=dtype)
+    np_df = np.zeros((num_samples, len(d_ref)), order="F", dtype=precision)
     for i in range(len(d_ref)):
         np_df[:, i] = xs[:] * inc_rates[i] + offsets[i] + noise[:]
 
-    if input_type == 'cudf':
-        df = np_to_cudf(np_df)
-    else:
+    # Numpy is the only tested input type at the moment
+    if input_type == 'numpy':
         df = np_df
 
     d_actual = stationarity(df)
