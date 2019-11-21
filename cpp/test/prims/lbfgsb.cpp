@@ -98,7 +98,7 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     params = ::testing::TestWithParam<LBFGSBInputs<T>>::GetParam();
     std::cout << "Running LBFGSB Test!\n";
 
-    int batchSize = 1;
+    int batchSize = 2;
     vector<double> ar(batchSize);
     vector<double> br(batchSize);
 
@@ -124,7 +124,7 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
       batched_h_rosenbrock(x, batchSize, ar, br, hfx);
     };
 
-    Batched_LBFGS_B opt(100, 100, 10, 1e-5, 1e7, 20, LBFGSB_PK_BFGS);
+    Batched_LBFGS_B opt(100, 100, 10, 1e-5, 1e7, 20, LBFGSB_PK_LBFGS);
     std::vector<LBFGSB_RESULT> status;
     std::vector<Eigen::VectorXd> x0(batchSize);
     for (int ib = 0; ib < batchSize; ib++) {
@@ -216,15 +216,15 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     std::vector<double> x1Ht;
     std::vector<double> y1Ht;
     x_to_xy(xk_all, 0, x0t, y0t);
-    // x_to_xy(xk_all, 1, x1t, y1t);
+    x_to_xy(xk_all, 1, x1t, y1t);
     // x_to_xy(xk_Newton_all, 0, x0Ht, y0Ht);
     // x_to_xy(xk_Newton_all, 1, x1Ht, y1Ht);
     plt::plot(x0t, y0t, "k-*");
     // plt::plot(x0t, y0t, "k-*", x0Ht, y0Ht, "g--o");
     plt::plot({ar[0]}, {ar[0] * ar[0]}, "r*");
-    // plt::subplot(2, 1, 2);
-    // plt::plot(x1t, y1t, "k-", x1Ht, y1Ht, "g-");
-    // plt::plot({ar[1]}, {ar[1] * ar[0]}, "r*");
+    plt::subplot(batchSize, 1, 2);
+    plt::plot(x1t, y1t, "k-*");
+    plt::plot({ar[1]}, {ar[1] * ar[1]}, "r*");
     plt::show();
   }
   LBFGSBInputs<T> params;
