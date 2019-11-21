@@ -124,7 +124,7 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
       batched_h_rosenbrock(x, batchSize, ar, br, hfx);
     };
 
-    Batched_LBFGS_B opt(100, 100);
+    Batched_LBFGS_B opt(100, 100, 10, 1e-5, 1e7, 20, LBFGSB_PK_BFGS);
     std::vector<LBFGSB_RESULT> status;
     std::vector<Eigen::VectorXd> x0(batchSize);
     for (int ib = 0; ib < batchSize; ib++) {

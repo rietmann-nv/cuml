@@ -41,6 +41,12 @@ enum LBFGSB_RESULT {
   LBFGSB_STOP_FTOL
 };
 
+// How to update `pk`: BFGS or L-BFGS
+enum LBFGS_PK_METHOD {
+  LBFGSB_PK_LBFGS,  // Standard L-BFGS 2-loop recursion
+  LBFGSB_PK_BFGS    // Use BFGS with full inverse hessian
+};
+
 std::string LBFGSB_RESULT_STRING(LBFGSB_RESULT res) {
   switch (res) {
     case LBFGSB_INCOMPLETE:
@@ -86,7 +92,8 @@ class Batched_LBFGS_B {
                 std::vector<std::vector<Eigen::VectorXd>>& xk_all);
 
   Batched_LBFGS_B(int verbosity = -1, int maxiter = 1000, int M = 10,
-                  double pgtol = 1e-5, double factr = 1e7, int maxls = 20);
+                  double pgtol = 1e-5, double factr = 1e7, int maxls = 20,
+                  LBFGS_PK_METHOD method = LBFGSB_PK_LBFGS);
 
  private:
   void compute_pk_single_bfgs(const Eigen::VectorXd& gk,
@@ -98,6 +105,8 @@ class Batched_LBFGS_B {
                          const std::deque<Eigen::VectorXd>& yk,
                          Eigen::Ref<Eigen::VectorXd> pk, int k);
 
+  ////////////////////////////////////////////////////////////////////////////////
+  // Runtime control parameters
   int
     m_verbosity;  // -1,0=silent, 1-100 (output every N steps), >100 (maximum output every step)
   int m_maxiter;   // stop when 'L-BFGS iter' > maxiter
@@ -107,7 +116,11 @@ class Batched_LBFGS_B {
 
   int m_maxls;  // reset storage when "line-search iterations" > maxls
   std::vector<std::vector<std::pair<int, int>>>
-    m_bounds;                                       // parameter box constraints
+    m_bounds;                   // parameter box constraints
+  LBFGS_PK_METHOD m_pk_method;  // L-BFGS (default) or BFGS
+
+  ////////////////////////////////////////////////////////////////////////////////
+  // Internal State
   int m_k;                                          // current iteration
   std::vector<Eigen::VectorXd> m_xk;                // current parameters
   std::vector<std::deque<Eigen::VectorXd>> m_M_sk;  // storage sk (column-major)
@@ -117,13 +130,15 @@ class Batched_LBFGS_B {
 };
 
 Batched_LBFGS_B::Batched_LBFGS_B(int verbosity, int maxiter, int M,
-                                 double pgtol, double factr, int maxls)
+                                 double pgtol, double factr, int maxls,
+                                 LBFGS_PK_METHOD pk_method)
   : m_verbosity(verbosity),
     m_maxiter(maxiter),
     m_M(M),
     m_pgtol(pgtol),
     m_factr(factr),
-    m_maxls(maxls) {}
+    m_maxls(maxls),
+    m_pk_method(pk_method) {}
 
 void Batched_LBFGS_B::minimizeNewton(
   std::function<void(const std::vector<Eigen::VectorXd>&, std::vector<double>&)>
@@ -292,8 +307,12 @@ void Batched_LBFGS_B::minimize(
         pk[ib] = -gx0[ib];
         alpha[ib] = 0.05;
       } else {
-        compute_pk_single(gk[ib], m_M_sk[ib], m_M_yk[ib], pk[ib], k);
-        // compute_pk_single_bfgs(gk[ib], sk[ib], yk[ib], Hk[ib], pk[ib]);
+        if (m_pk_method == LBFGSB_PK_LBFGS)
+          compute_pk_single(gk[ib], m_M_sk[ib], m_M_yk[ib], pk[ib], k);
+        else if (m_pk_method == LBFGSB_PK_BFGS)
+          compute_pk_single_bfgs(gk[ib], sk[ib], yk[ib], Hk[ib], pk[ib]);
+        else
+          throw std::runtime_error("Unkonw m_pk_method parameter!");
 
         alpha[ib] = 1.0;
       }
@@ -392,7 +411,7 @@ void Batched_LBFGS_B::minimize(
 }
 
 /**
-   Implements Alg. 7.4 from "Numerical Optimization"
+   Implements Alg. 7.4 (L-BFGS two-loop recursion) from "Numerical Optimization"
  */
 void Batched_LBFGS_B::compute_pk_single(const Eigen::VectorXd& gk,
                                         const std::deque<Eigen::VectorXd>& sk,
@@ -414,11 +433,10 @@ void Batched_LBFGS_B::compute_pk_single(const Eigen::VectorXd& gk,
     r = r + sk[i] * (alpha(i) - beta);
   }
   pk = -r;
-  // pk = -gk;  // use SD for now...
 }
 
 /**
-   Implements Alg. 7.4 from "Numerical Optimization"
+   Implements Eq. 6.17 (BFGS) from "Numerical Optimization"
 */
 void Batched_LBFGS_B::compute_pk_single_bfgs(const Eigen::VectorXd& gk,
                                              const Eigen::VectorXd& sk,
