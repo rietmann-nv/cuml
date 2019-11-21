@@ -99,8 +99,8 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     std::cout << "Running LBFGSB Test!\n";
 
     int batchSize = 2;
-    vector<double> ar(batchSize);
-    vector<double> br(batchSize);
+    ar.resize(batchSize);
+    br.resize(batchSize);
 
     std::random_device rd{};
     // std::mt19937 gen(rd());
@@ -207,10 +207,7 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
 
     // plot results
     plt::subplot(batchSize, 1, 1);
-    std::vector<double> x0t;
-    std::vector<double> y0t;
-    std::vector<double> x1t;
-    std::vector<double> y1t;
+
     std::vector<double> x0Ht;
     std::vector<double> y0Ht;
     std::vector<double> x1Ht;
@@ -228,10 +225,22 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     plt::show();
   }
   LBFGSBInputs<T> params;
+  std::vector<double> x0t;
+  std::vector<double> y0t;
+  std::vector<double> x1t;
+  std::vector<double> y1t;
+  vector<double> ar;
+  vector<double> br;
 };
 
 using LBFGSBTestD = LBFGSBTest<double>;
-TEST_P(LBFGSBTestD, Result) { std::cout << "Finished Test\n"; }
+TEST_P(LBFGSBTestD, Result) {
+  ASSERT_NEAR(x0t.back(), ar[0], 1e-5);
+  ASSERT_NEAR(y0t.back(), ar[0] * ar[0], 1e-5);
+  ASSERT_NEAR(x1t.back(), ar[1], 1e-5);
+  ASSERT_NEAR(y1t.back(), ar[1] * ar[1], 1e-5);
+  std::cout << "Finished Test\n";
+}
 
 const vector<LBFGSBInputs<double>> inputsd = {{1e-6}};
 
