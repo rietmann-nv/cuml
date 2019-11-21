@@ -19,7 +19,7 @@
 #include <iostream>
 
 #include <gtest/gtest.h>
-#include <optimization/lbfgs_b.h>
+#include <optimize/lbfgs_b.h>
 #include <cstdio>
 #include <random>
 #include <vector>

@@ -58,6 +58,8 @@ include_directories(
   ${TREELITE_DIR}/runtime/native/include
 )
 
+find_package(PythonLibs 2.7)
+
 ###################################################################################################
 # - build ml_test executable ----------------------------------------------------------------
 
@@ -88,6 +90,7 @@ if(BUILD_CUML_TESTS)
       sg/holtwinters_test.cu
       sg/kmeans_test.cu
       sg/knn_test.cu
+      sg/lbfgsb.cpp
       sg/lkf_test.cu
       sg/ols.cu
       sg/pca_test.cu
@@ -112,7 +115,9 @@ if(BUILD_CUML_TESTS)
     target_link_libraries(ml
       gtestlib
       gtest_mainlib
-      ${ML_TEST_LINK_LIBRARIES})
+      ${ML_TEST_LINK_LIBRARIES}
+      ${PYTHON_LIBRARIES}
+      )
 
 endif(BUILD_CUML_TESTS)
 
@@ -215,7 +220,6 @@ if(BUILD_PRIMS_TESTS)
       prims/knn.cu
       prims/kselection.cu
       prims/label.cu
-      prims/lbfgsb.cpp
       prims/linearReg.cu
       prims/log.cu
       prims/logisticReg.cu
@@ -268,8 +272,7 @@ if(BUILD_PRIMS_TESTS)
     add_dependencies(prims cub)
     add_dependencies(prims cutlass)
 
-    find_package(PythonLibs 2.7)
-    target_include_directories(prims PRIVATE ${PYTHON_INCLUDE_DIRS})
+    target_include_directories(ml PRIVATE ${PYTHON_INCLUDE_DIRS})
 
     target_link_libraries(prims
       gtestlib

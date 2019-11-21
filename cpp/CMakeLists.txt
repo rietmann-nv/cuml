@@ -365,6 +365,8 @@ if(BUILD_CUML_CPP_LIBRARY)
 
   set(CUML_CPP_TARGET "cuml++")
 
+  add_subdirectory(src/optimize)
+
   add_library(${CUML_CPP_TARGET} SHARED
     src/common/cumlHandle.cpp
     src/common/cuml_api.cpp
@@ -414,7 +416,7 @@ if(BUILD_CUML_CPP_LIBRARY)
     )
 
   if(OPENMP_FOUND)
-    set(CUML_LINK_LIBRARIES ${CUML_LINK_LIBRARIES} OpenMP::OpenMP_CXX Threads::Threads)
+    set(CUML_LINK_LIBRARIES ${CUML_LINK_LIBRARIES} OpenMP::OpenMP_CXX Threads::Threads lbfgsb)
   endif(OPENMP_FOUND)
 
   if(NVTX)
