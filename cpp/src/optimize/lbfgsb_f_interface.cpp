@@ -1,12 +1,22 @@
 #include "lbfgs_b.h"
 
+// from fortran
+extern "C" void setulb_(int* n, int* m, double* x, double* l, double* u,
+                        int* nbd, double* f, double* g, double* factr,
+                        double* pgtol, double* wa, int* iwa, char* task,
+                        int* iprint, char* csave, int* lsave, int* isave,
+                        double* dsave, int* maxls);
+
 namespace MLCommon {
 namespace Optimization {
 
-void setulb_(int* n, int* m, double* x, double* l, double* u, int* nbd,
-             double* f, double* g, double* factr, double* pgtol, double* wa,
-             int* iwa, char* task, int* iprint, char* csave, int* lsave,
-             int* isave, double* dsave, int* maxls);
+bool matchStr(const std::vector<char>& array, std::string string) {
+  bool allmatch = true;
+  for (int i = 0; i < string.size(); i++) {
+    allmatch = array[i] == string[i];
+  }
+  return allmatch;
+}
 
 void Batched_LBFGS_B::minimize_fortran(
   std::function<void(const std::vector<Eigen::VectorXd>& x,
@@ -22,7 +32,8 @@ void Batched_LBFGS_B::minimize_fortran(
   const int batchSize = x.size();
   int ndim = x[0].size();
   std::vector<double> f_b(batchSize);
-  std::vector<std::vector<double>> g_b(batchSize);
+  std::vector<Eigen::VectorXd> g_b(batchSize);
+
   std::vector<std::vector<double>> wa_b(batchSize);
   std::vector<std::vector<int>> iwa_b(batchSize);
   std::vector<std::vector<char>> task_b(batchSize);
@@ -31,11 +42,14 @@ void Batched_LBFGS_B::minimize_fortran(
   std::vector<std::vector<int>> isave_b(batchSize);
   std::vector<std::vector<double>> dsave_b(batchSize);
 
+  std::vector<double> f_b_tmp(batchSize);
+  std::vector<Eigen::VectorXd> g_b_tmp(batchSize);
+
   for (int i = 0; i < batchSize; i++) {
     const int n = ndim;
     const int m = m_M;
     f_b[i] = 0.0;
-    g_b[i].resize(n, 0.0);
+    g_b[i] = Eigen::VectorXd::Zero(n);
     wa_b[i].resize(2 * m * n + 5 * n + 11 * m * m + 8 * m, 0.0);
     iwa_b[i].resize(3 * n, 0);
     task_b[i].resize(20, 0);
@@ -44,13 +58,19 @@ void Batched_LBFGS_B::minimize_fortran(
     lsave_b[i].resize(4, false);
     isave_b[i].resize(44, 0);
     dsave_b[i].resize(29, 0.0);
+
+    f_b_tmp[i] = 0.0;
+    g_b_tmp[i] = Eigen::VectorXd::Zero(n);
   }
 
   std::vector<bool> converged(batchSize, false);
+  std::vector<LBFGSB_RESULT> stop_reason(batchSize);
   std::vector<double> lb(batchSize, 0);
   std::vector<double> ub(batchSize, 0);
   int nbp = 0.0;
-  for (int k = 0; k < m_maxiter; k++) {
+  std::vector<int> n_iterations(batchSize, 0);
+  while (
+    std::all_of(converged.begin(), converged.end(), [](bool v) { return v; })) {
     for (int ib = 0; ib < batchSize; ib++) {
       if (converged[ib]) continue;
 
@@ -60,9 +80,34 @@ void Batched_LBFGS_B::minimize_fortran(
               csave_b[ib].data(), lsave_b[ib].data(), isave_b[ib].data(),
               dsave_b[ib].data(), &m_maxls);
     }
-    // std::all_of(ls_success.begin(), ls_success.end(),
-    // [](bool v) { return v; })
-  }
 
+    // re-evaluate f,g every buffer
+    f(x, f_b_tmp);
+    g(x, g_b_tmp);
+    for (int ib = 0; ib < batchSize; ib++) {
+      if (converged[ib]) continue;
+
+      // function eval required
+      if (matchStr(task_b[ib], "FG")) {
+        f_b[ib] = f_b_tmp[ib];
+        g_b[ib] = g_b_tmp[ib];
+      } else if (matchStr(task_b[ib], "NEW_X")) {
+        xk_all.push_back(x);
+        n_iterations[ib]++;
+        if (n_iterations[ib] >= m_maxiter) {
+          converged[ib] = true;
+          stop_reason[ib] = LBFGSB_STOP_ITER;
+        }
+      } else if (matchStr(task_b[ib], "CONV")) {
+        converged[ib] = true;
+        stop_reason[ib] = LBFGSB_STOP_GTOL;
+      } else {
+        converged[ib] = true;
+        stop_reason[ib] = LBFGSB_STOP_ITER;
+      }
+    }
+
+  }  // while
+}
 }  // namespace Optimization
-}  // namespace Optimization
+}  // namespace MLCommon

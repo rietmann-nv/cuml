@@ -189,7 +189,7 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     std::vector<std::vector<Eigen::VectorXd>> xk_all;
     std::vector<std::vector<Eigen::VectorXd>> xk_Newton_all;
     std::vector<Eigen::VectorXd> x0H = x0;
-    opt.minimize(f, gf, fx0, gx0, x0, status, info_str, xk_all);
+    opt.minimize_fortran(f, gf, fx0, gx0, x0, status, info_str, xk_all);
     check_status(status);
     // opt.minimizeNewton(f, gf, hf, x0H, status, info_str, xk_Newton_all);
     // check_status(status);
