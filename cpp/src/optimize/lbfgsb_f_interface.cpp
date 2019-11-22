@@ -10,6 +10,13 @@ extern "C" void setulb_(int* n, int* m, double* x, double* l, double* u,
 namespace MLCommon {
 namespace Optimization {
 
+void setStr(std::vector<char>& array, std::string string) {
+  for (int i = 0; i < string.size(); i++) {
+    array[i] = string[i];
+  }
+  array[string.size()] = 0;
+}
+
 bool matchStr(const std::vector<char>& array, std::string string) {
   bool allmatch = true;
   for (int i = 0; i < string.size(); i++) {
@@ -52,8 +59,9 @@ void Batched_LBFGS_B::minimize_fortran(
     g_b[i] = Eigen::VectorXd::Zero(n);
     wa_b[i].resize(2 * m * n + 5 * n + 11 * m * m + 8 * m, 0.0);
     iwa_b[i].resize(3 * n, 0);
-    task_b[i].resize(20, 0);
-    task_b[i] = {'S', 'T', 'A', 'R', 'T', 0};
+    task_b[i].resize(100, 0);
+    setStr(task_b[i], "START");
+
     csave_b[i].resize(20, 0);
     lsave_b[i].resize(4, false);
     isave_b[i].resize(44, 0);
@@ -65,17 +73,20 @@ void Batched_LBFGS_B::minimize_fortran(
 
   std::vector<bool> converged(batchSize, false);
   std::vector<LBFGSB_RESULT> stop_reason(batchSize);
+
+  // nbp tells about bounds. 0 is no bound.
+  std::vector<int> nbp(batchSize, 0);
   std::vector<double> lb(batchSize, 0);
   std::vector<double> ub(batchSize, 0);
-  int nbp = 0.0;
+
   std::vector<int> n_iterations(batchSize, 0);
-  while (
-    std::all_of(converged.begin(), converged.end(), [](bool v) { return v; })) {
+  while (std::all_of(converged.begin(), converged.end(),
+                     [](bool v) { return !v; })) {
     for (int ib = 0; ib < batchSize; ib++) {
       if (converged[ib]) continue;
 
-      setulb_(&ndim, &m_M, x[ib].data(), lb.data(), ub.data(), &nbp, f_b.data(),
-              g_b[ib].data(), &m_factr, &m_pgtol, wa_b[ib].data(),
+      setulb_(&ndim, &m_M, x[ib].data(), lb.data(), ub.data(), nbp.data(),
+              f_b.data(), g_b[ib].data(), &m_factr, &m_pgtol, wa_b[ib].data(),
               iwa_b[ib].data(), task_b[ib].data(), &m_verbosity,
               csave_b[ib].data(), lsave_b[ib].data(), isave_b[ib].data(),
               dsave_b[ib].data(), &m_maxls);
@@ -102,6 +113,7 @@ void Batched_LBFGS_B::minimize_fortran(
         converged[ib] = true;
         stop_reason[ib] = LBFGSB_STOP_GTOL;
       } else {
+        printf("MIN FAIL: %s\n", task_b[ib].data());
         converged[ib] = true;
         stop_reason[ib] = LBFGSB_STOP_ITER;
       }

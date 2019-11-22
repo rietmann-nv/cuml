@@ -235,6 +235,7 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
 
 using LBFGSBTestD = LBFGSBTest<double>;
 TEST_P(LBFGSBTestD, Result) {
+  ASSERT_GT(x0t.size(), 0);
   ASSERT_NEAR(x0t.back(), ar[0], 1e-5);
   ASSERT_NEAR(y0t.back(), ar[0] * ar[0], 1e-5);
   ASSERT_NEAR(x1t.back(), ar[1], 1e-5);
