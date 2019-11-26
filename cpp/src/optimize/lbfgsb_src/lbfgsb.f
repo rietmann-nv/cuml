@@ -233,7 +233,7 @@ c-jlm-jn
       integer   lws,lr,lz,lt,ld,lxp,lwa,
      +          lwy,lsy,lss,lwt,lwn,lsnd
 
-      if (task .eq. 'START') then
+      if (task(1:5) .eq. 'START') then
          isave(1)  = m*n
          isave(2)  = m**2
          isave(3)  = 4*m**2
@@ -490,7 +490,7 @@ c     ************
       external         dlamch
       parameter        (one=1.0d0,zero=0.0d0)
       
-      if (task .eq. 'START') then
+      if (task(1:5) .eq. 'START') then
 
          epsmch = 2 * dlamch('e')
 
