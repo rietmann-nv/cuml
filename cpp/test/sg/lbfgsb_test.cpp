@@ -183,14 +183,22 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
 
     std::string info_str;
     std::vector<double> fx0;
+    std::vector<double> fx0_f;
     f(x0, fx0);
+    fx0_f = fx0;
     std::vector<Eigen::VectorXd> gx0;
+    std::vector<Eigen::VectorXd> gx0_f;
     gf(x0, gx0);
+    gx0_f = gx0;
     std::vector<std::vector<Eigen::VectorXd>> xk_all;
-    std::vector<std::vector<Eigen::VectorXd>> xk_Newton_all;
-    std::vector<Eigen::VectorXd> x0H = x0;
-    opt.minimize_fortran(f, gf, fx0, gx0, x0, status, info_str, xk_all);
+    std::vector<std::vector<Eigen::VectorXd>> xk_f_all;
+    std::vector<Eigen::VectorXd> x0f = x0;
+
+    opt.minimize(f, gf, fx0, gx0, x0, status, info_str, xk_all);
     check_status(status);
+    opt.minimize_fortran(f, gf, fx0, gx0, x0f, status, info_str, xk_f_all);
+    check_status(status);
+
     // opt.minimizeNewton(f, gf, hf, x0H, status, info_str, xk_Newton_all);
     // check_status(status);
     auto x_to_xy = [](std::vector<std::vector<Eigen::VectorXd>>& xin, int bid,
@@ -208,19 +216,19 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     // plot results
     plt::subplot(batchSize, 1, 1);
 
-    std::vector<double> x0Ht;
-    std::vector<double> y0Ht;
-    std::vector<double> x1Ht;
-    std::vector<double> y1Ht;
+    std::vector<double> x0ft;
+    std::vector<double> y0ft;
+    std::vector<double> x1ft;
+    std::vector<double> y1ft;
     x_to_xy(xk_all, 0, x0t, y0t);
     x_to_xy(xk_all, 1, x1t, y1t);
-    // x_to_xy(xk_Newton_all, 0, x0Ht, y0Ht);
-    // x_to_xy(xk_Newton_all, 1, x1Ht, y1Ht);
-    plt::plot(x0t, y0t, "k-*");
-    // plt::plot(x0t, y0t, "k-*", x0Ht, y0Ht, "g--o");
+    x_to_xy(xk_f_all, 0, x0ft, y0ft);
+    x_to_xy(xk_f_all, 1, x1ft, y1ft);
+    // plt::plot(x0t, y0t, "k-*");
+    plt::plot(x0t, y0t, "k-*", x0ft, y0ft, "g--o");
     plt::plot({ar[0]}, {ar[0] * ar[0]}, "r*");
     plt::subplot(batchSize, 1, 2);
-    plt::plot(x1t, y1t, "k-*");
+    plt::plot(x1t, y1t, "k-*", x1ft, y1ft, "g--o");
     plt::plot({ar[1]}, {ar[1] * ar[1]}, "r*");
     plt::show();
   }

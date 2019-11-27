@@ -15,6 +15,7 @@
  */
 
 #include "lbfgs_b.h"
+#include "linesearch.h"
 
 namespace MLCommon {
 namespace Optimization {
@@ -232,41 +233,12 @@ void Batched_LBFGS_B::minimize(
 
     // backtracking line search
     // TODO: Implement good line search
-    std::vector<bool> ls_success(batchSize, false);
-    for (int ils = 0; ils < m_maxls; ils++) {
-      f(xk, fk);
-      for (int ib = 0; ib < batchSize; ib++) {
-        if (ls_success[ib]) continue;
-        xkp1[ib] = xk[ib] + alpha[ib] * pk[ib];
-      }
-      f(xkp1, fkp1);
-      for (int ib = 0; ib < batchSize; ib++) {
-        if (ls_success[ib]) continue;
-        if (fkp1[ib] < fk[ib]) {
-          ls_success[ib] = true;
-          if (m_verbosity > 0 && k % m_verbosity == 0) {
-            printf("k=%d, bid=%d: line search iterations=%d\n", k, ib, ils);
-          }
-          if (m_verbosity >= 100)
-            printf("k=%d, bid=%d: successful alpha=%f\n", k, ib, alpha[ib]);
-        } else {
-          if (m_verbosity >= 100)
-            printf("k=%d, bid=%d: unsuccessful alpha=%f\n", k, ib, alpha[ib]);
-        }
-        alpha[ib] *= 0.5;  // shrink stepsized by half;
-      }
-      // if all true, stop line search
-      if (std::all_of(ls_success.begin(), ls_success.end(),
-                      [](bool v) { return v; }))
-        break;
-
-      // if we needed all line-search iterations, return with error.
-      if (ils == m_maxls - 1) {
-        for (int ib = 0; ib < batchSize; ib++) {
-          if (ls_success[ib] == false) status[ib] = LBFGSB_STOP_MAXLS;
-          x = xk;
-          return;
-        }
+    LS_RESULT result;
+    linesearch_backtracking(f, g, xk, pk, alpha[0], m_maxls, m_verbosity,
+                            result);
+    if (result == LS_FAIL_MAXITER) {
+      for (auto& si : status) {
+        si = LBFGSB_STOP_MAXLS;
       }
     }
 

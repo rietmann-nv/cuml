@@ -1,3 +1,4 @@
+#include "f_util.h"
 #include "lbfgs_b.h"
 
 // from fortran
@@ -9,21 +10,6 @@ extern "C" void setulb_(int* n, int* m, double* x, double* l, double* u,
 
 namespace MLCommon {
 namespace Optimization {
-
-void setStr(std::vector<char>& array, std::string string) {
-  for (int i = 0; i < string.size(); i++) {
-    array[i] = string[i];
-  }
-  array[string.size()] = 0;
-}
-
-bool matchStr(const std::vector<char>& array, std::string string) {
-  bool allmatch = true;
-  for (int i = 0; i < string.size(); i++) {
-    allmatch = array[i] == string[i];
-  }
-  return allmatch;
-}
 
 void Batched_LBFGS_B::minimize_fortran(
   std::function<void(const std::vector<Eigen::VectorXd>& x,
@@ -74,6 +60,9 @@ void Batched_LBFGS_B::minimize_fortran(
   std::vector<bool> converged(batchSize, false);
   std::vector<LBFGSB_RESULT> stop_reason(batchSize);
 
+  // save initial solution.
+  xk_all.push_back(x);
+
   // nbp tells about bounds. 0 is no bound.
   std::vector<int> nbp(batchSize, 0);
   std::vector<double> lb(batchSize, 0);
@@ -120,6 +109,14 @@ void Batched_LBFGS_B::minimize_fortran(
     }
 
   }  // while
+
+  if (m_verbosity >= 100) {
+    for (int ib = 0; ib < batchSize; ib++) {
+      std::printf("batch(%d) stopped: %s\n", ib,
+                  LBFGSB_RESULT_STRING(stop_reason[ib]).c_str());
+    }
+  }
+  int a = 0;
 }
 }  // namespace Optimization
 }  // namespace MLCommon
