@@ -59,10 +59,10 @@ void Batched_LBFGS_B::minimize_fortran(
     g_b[i] = Eigen::VectorXd::Zero(n);
     wa_b[i].resize(2 * m * n + 5 * n + 11 * m * m + 8 * m, 0.0);
     iwa_b[i].resize(3 * n, 0);
-    task_b[i].resize(100, 0);
+    task_b[i].resize(60, 0);
     setStr(task_b[i], "START");
 
-    csave_b[i].resize(20, 0);
+    csave_b[i].resize(60, 0);
     lsave_b[i].resize(4, false);
     isave_b[i].resize(44, 0);
     dsave_b[i].resize(29, 0.0);
