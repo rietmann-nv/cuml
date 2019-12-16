@@ -18,7 +18,7 @@ std::vector<double> linesearch_minpack(
                      std::vector<Eigen::VectorXd>& gfx)>
     grad,
   const std::vector<Eigen::VectorXd>& x, const std::vector<Eigen::VectorXd>& p,
-  double alpha0, std::vector<LS_RESULT>& result);
+  double alpha0, int verbosity, std::vector<LS_RESULT>& result);
 
 std::vector<double> linesearch_backtracking(
   std::function<void(const std::vector<Eigen::VectorXd>& x,

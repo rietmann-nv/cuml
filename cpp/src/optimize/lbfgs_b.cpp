@@ -213,6 +213,8 @@ void Batched_LBFGS_B::minimize(
 
   for (int k = 0; k < m_maxiter; k++) {
     for (int ib = 0; ib < batchSize; ib++) {
+      if (status[ib] != LBFGSB_INCOMPLETE) continue;
+
       // compute search direction pk
       if (k == 0) {
         // first step just does steepest descent
@@ -224,7 +226,7 @@ void Batched_LBFGS_B::minimize(
         else if (m_pk_method == LBFGSB_PK_BFGS)
           compute_pk_single_bfgs(gk[ib], sk[ib], yk[ib], Hk[ib], pk[ib]);
         else
-          throw std::runtime_error("Unkonw m_pk_method parameter!");
+          throw std::runtime_error("Unkown m_pk_method parameter!");
 
         alpha[ib] = 1.0;
       }
@@ -236,26 +238,25 @@ void Batched_LBFGS_B::minimize(
     }
 
     // backtracking line search
-    std::vector<LS_RESULT> result(batchSize);
     // alpha =
     //   linesearch_backtracking(f, g, xk, pk, 1.0, m_maxls, m_verbosity, result);
-    alpha = linesearch_minpack(f, g, xk, pk, 1.0, result);
-    if (k == 0) alpha[0] = 0.0009845923892965501;
-    // printf("alpha[0]=%e\n", alpha[0]);
-    // if (result == LS_FAIL) {
+
+    // minpack2 line-search
+    std::vector<LS_RESULT> result(batchSize);
+    alpha = linesearch_minpack(f, g, xk, pk, 1.0, m_verbosity, result);
+
     for (int i = 0; i < batchSize; i++) {
       if (result[i] == LS_FAIL) {
-        printf("LineSearch Failed!\n", i);
-        // Hk[i] = Eigen::MatrixXd::Identity(N, N);
+        printf("(bid=%d) LineSearch Failed!\n", i);
         status[i] = LBFGSB_STOP_MAXLS;
       }
     }
-    // }
 
     // take step and update LBFGS-sk variable
     for (int ib = 0; ib < batchSize; ib++) {
+      if (status[ib] != LBFGSB_INCOMPLETE) continue;
+
       xkp1[ib] = xk[ib] + alpha[ib] * pk[ib];
-      std::cout << "xkp1=" << xkp1[ib].transpose() << "\n";
       m_M_sk[ib].push_back(xkp1[ib] - xk[ib]);
       if (k > m_M) m_M_sk[ib].pop_front();
       sk[ib] = xkp1[ib] - xk[ib];
@@ -264,6 +265,8 @@ void Batched_LBFGS_B::minimize(
     // update gradient and LBFGS-yk variables
     g(xkp1, gkp1);
     for (int ib = 0; ib < batchSize; ib++) {
+      if (status[ib] != LBFGSB_INCOMPLETE) continue;
+
       yk[ib] = gkp1[ib] - gk[ib];
       m_M_yk[ib].push_back(yk[ib]);
       if (k > m_M) m_M_yk[ib].pop_front();
@@ -274,6 +277,8 @@ void Batched_LBFGS_B::minimize(
     f(xk, fk);
     f(xkp1, fkp1);
     for (int ib = 0; ib < batchSize; ib++) {
+      if (status[ib] != LBFGSB_INCOMPLETE) continue;
+
       auto g_norm = gk[ib].norm();
       if (k % m_verbosity == 0 || m_verbosity >= 100) {
         printf("k=%d, bid=%d: |f|=%e -> %e, |g|=%e\n", k, ib, std::abs(fk[ib]),
