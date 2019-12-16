@@ -67,7 +67,8 @@ class Batched_LBFGS_B {
                 const std::vector<Eigen::VectorXd>& gx0,
                 std::vector<Eigen::VectorXd>& x,
                 std::vector<LBFGSB_RESULT>& status, std::string& info_str,
-                std::vector<std::vector<Eigen::VectorXd>>& xk_all);
+                std::vector<std::vector<Eigen::VectorXd>>& xk_all,
+                std::vector<std::vector<Eigen::VectorXd>>& gk_all);
 
   void minimize_fortran(
     std::function<void(const std::vector<Eigen::VectorXd>& x,
@@ -84,10 +85,13 @@ class Batched_LBFGS_B {
                   double pgtol = 1e-5, double factr = 1e7, int maxls = 20,
                   LBFGS_PK_METHOD method = LBFGSB_PK_LBFGS);
 
+  void set_verbosity(int verbosity) { m_verbosity = verbosity; }
+
  private:
   void compute_pk_single_bfgs(const Eigen::VectorXd& gk,
                               const Eigen::VectorXd& sk,
-                              const Eigen::VectorXd& yk, Eigen::MatrixXd& Hk,
+                              const Eigen::VectorXd& yk,
+                              Eigen::Ref<Eigen::MatrixXd> Hk,
                               Eigen::Ref<Eigen::VectorXd> pk);
   void compute_pk_single(const Eigen::VectorXd& gk,
                          const std::deque<Eigen::VectorXd>& sk,

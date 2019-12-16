@@ -25,3 +25,8 @@ target_link_libraries(lbfgsb_f
 target_link_libraries(lbfgsb
   lbfgsb_f
   )
+
+target_include_directories(lbfgsb
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  )

@@ -15,6 +15,7 @@
  */
 
 #include "lbfgs_b.h"
+#include <iostream>
 #include "linesearch.h"
 
 namespace MLCommon {
@@ -169,7 +170,8 @@ void Batched_LBFGS_B::minimize(
     g,
   const std::vector<double>& fx0, const std::vector<Eigen::VectorXd>& gx0,
   std::vector<Eigen::VectorXd>& x, std::vector<LBFGSB_RESULT>& status,
-  std::string& info_str, std::vector<std::vector<Eigen::VectorXd>>& xk_all) {
+  std::string& info_str, std::vector<std::vector<Eigen::VectorXd>>& xk_all,
+  std::vector<std::vector<Eigen::VectorXd>>& gk_all) {
   auto printvec = [](const std::vector<Eigen::VectorXd>& vec, int ib,
                      std::string name) {
     printf("%s=[", name.c_str());
@@ -207,6 +209,8 @@ void Batched_LBFGS_B::minimize(
     Hk[i] = Eigen::MatrixXd::Identity(N, N);
   }
 
+  gk_all.push_back(gx0);
+
   for (int k = 0; k < m_maxiter; k++) {
     for (int ib = 0; ib < batchSize; ib++) {
       // compute search direction pk
@@ -232,30 +236,37 @@ void Batched_LBFGS_B::minimize(
     }
 
     // backtracking line search
-    // TODO: Implement good line search
-    LS_RESULT result;
-    linesearch_backtracking(f, g, xk, pk, alpha[0], m_maxls, m_verbosity,
-                            result);
-    if (result == LS_FAIL_MAXITER) {
-      for (auto& si : status) {
-        si = LBFGSB_STOP_MAXLS;
+    std::vector<LS_RESULT> result(batchSize);
+    // alpha =
+    //   linesearch_backtracking(f, g, xk, pk, 1.0, m_maxls, m_verbosity, result);
+    alpha = linesearch_minpack(f, g, xk, pk, 1.0, result);
+    if (k == 0) alpha[0] = 0.0009845923892965501;
+    // printf("alpha[0]=%e\n", alpha[0]);
+    // if (result == LS_FAIL) {
+    for (int i = 0; i < batchSize; i++) {
+      if (result[i] == LS_FAIL) {
+        printf("LineSearch Failed!\n", i);
+        // Hk[i] = Eigen::MatrixXd::Identity(N, N);
+        status[i] = LBFGSB_STOP_MAXLS;
       }
     }
+    // }
 
     // take step and update LBFGS-sk variable
     for (int ib = 0; ib < batchSize; ib++) {
       xkp1[ib] = xk[ib] + alpha[ib] * pk[ib];
+      std::cout << "xkp1=" << xkp1[ib].transpose() << "\n";
       m_M_sk[ib].push_back(xkp1[ib] - xk[ib]);
       if (k > m_M) m_M_sk[ib].pop_front();
       sk[ib] = xkp1[ib] - xk[ib];
     }
 
-    // update gradient and LBFGS-gk variables
+    // update gradient and LBFGS-yk variables
     g(xkp1, gkp1);
     for (int ib = 0; ib < batchSize; ib++) {
-      m_M_yk[ib].push_back(gkp1[ib] - gk[ib]);
-      if (k > m_M) m_M_yk[ib].pop_front();
       yk[ib] = gkp1[ib] - gk[ib];
+      m_M_yk[ib].push_back(yk[ib]);
+      if (k > m_M) m_M_yk[ib].pop_front();
       gk[ib] = gkp1[ib];
     }
 
@@ -284,6 +295,8 @@ void Batched_LBFGS_B::minimize(
     if (stop) break;
     xk = xkp1;
     xk_all.push_back(xk);
+    gk_all.push_back(gk);
+    // gk_all.
   }  // for k in maxiter
 
   x = xk;
@@ -320,16 +333,22 @@ void Batched_LBFGS_B::compute_pk_single(const Eigen::VectorXd& gk,
 void Batched_LBFGS_B::compute_pk_single_bfgs(const Eigen::VectorXd& gk,
                                              const Eigen::VectorXd& sk,
                                              const Eigen::VectorXd& yk,
-                                             Eigen::MatrixXd& Hk,
+                                             Eigen::Ref<Eigen::MatrixXd> Hk,
                                              Eigen::Ref<Eigen::VectorXd> pk) {
   using Eigen::MatrixXd;
   int N = Hk.rows();
   double rhok = 1 / (yk.dot(sk));
-  MatrixXd Hkp1 = (MatrixXd::Identity(N, N) - rhok * sk * yk.transpose()) * Hk *
-                    (MatrixXd::Identity(N, N) - rhok * yk * sk.transpose()) +
-                  rhok * sk * sk.transpose();
+  MatrixXd A1 = MatrixXd::Identity(N, N) - rhok * sk * yk.transpose();
+  MatrixXd A2 = MatrixXd::Identity(N, N) - rhok * yk * sk.transpose();
+  MatrixXd Hkp1 = (A1)*Hk * (A2) + rhok * sk * sk.transpose();
+  // std::cout << "A1=" << A1 << "\n";
+  // std::cout << "A2=" << A2 << "\n";
+  // std::cout << "Hk=" << Hkp1 << "\n";
   pk = -Hkp1 * gk;
   Hk = Hkp1;
+
+  // just steepest descent
+  // pk = -gk;
 }
 
 }  // namespace Optimization

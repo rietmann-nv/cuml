@@ -64,9 +64,9 @@ void Batched_LBFGS_B::minimize_fortran(
   xk_all.push_back(x);
 
   // nbp tells about bounds. 0 is no bound.
-  std::vector<int> nbp(batchSize, 0);
-  std::vector<double> lb(batchSize, 0);
-  std::vector<double> ub(batchSize, 0);
+  std::vector<int> nbp(ndim, 0);
+  std::vector<double> lb(ndim, 0);
+  std::vector<double> ub(ndim, 0);
 
   std::vector<int> n_iterations(batchSize, 0);
   while (std::all_of(converged.begin(), converged.end(),

@@ -1,11 +1,22 @@
 #include "linesearch.h"
+#include <iostream>
 #include "f_util.h"
-
-extern "C" void dcsrch_(double* stp, double* f, double* g, double* ftol,
-                        double* gtol, double* xtol, char* task, double* stpmin,
-                        double* stpmax, int* isave, double* dsave);
+extern "C" void dcsrch_(double* f, double* g, double* stp, double* ftol,
+                        double* gtol, double* xtol, double* stpmin,
+                        double* stpmax, char* task, int* isave, double* dsave);
 
 using std::vector;
+
+template <class T>
+std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
+  os << "[";
+  for (typename std::vector<T>::const_iterator ii = v.begin(); ii != v.end();
+       ++ii) {
+    os << " " << *ii;
+  }
+  os << "]";
+  return os;
+}
 
 vector<double> linesearch_backtracking(
   std::function<void(const vector<Eigen::VectorXd>& x, vector<double>& fx)>
@@ -49,8 +60,10 @@ vector<double> linesearch_backtracking(
     }
     // if all true, stop line search
     if (std::all_of(ls_success.begin(), ls_success.end(),
-                    [](bool v) { return v; }))
+                    [](bool v) { return v; })) {
+      result = LS_SUCCESS;
       break;
+    }
 
     // if we needed all line-search iterations, return with error.
     if (ils == maxls - 1) {
@@ -68,17 +81,21 @@ vector<double> linesearch_minpack(
                      std::vector<Eigen::VectorXd>& gfx)>
     grad,
   const vector<Eigen::VectorXd>& x, const vector<Eigen::VectorXd>& p,
-  double alpha0, LS_RESULT& result) {
+  double alpha0, vector<LS_RESULT>& result) {
   const int batchSize = p.size();
   const int ndim = x[0].size();
 
   vector<Eigen::VectorXd> p_norm = p;
+  std::cout << "p=" << p << "\n";
   for (auto& pi : p_norm) {
     pi = pi / pi.norm();
   }
-
+  // std::cout << "p_norm=" << p_norm << "\n";
   // sanity check
   for (auto& pi : p_norm) {
+    std::cout << "pi=" << pi << "\n";
+    std::cout << "|pi|: " << pi.norm() << "\n";
+    // printf("|p|: %f\n", pi.norm());
     assert(std::abs(pi.norm() - 1.0) < 1e-12);
   }
 
@@ -87,16 +104,23 @@ vector<double> linesearch_minpack(
     d_x_p.resize(batchSize, 0.0);
     grad(x, g_x);
     for (int ib = 0; ib < batchSize; ib++) {
-      d_x_p[ib] = g_x[ib].dot(p_norm[ib]);
+      d_x_p[ib] = g_x[ib].dot(p[ib]);
     }
   };
 
   vector<double> alpha(batchSize, alpha0);  // called `stp` in fortran
   vector<double> f;
+  vector<double> f0;
   func(x, f);
+  f0 = f;
+  // std::cout << "f(x0) = " << f << "\n";
+
   vector<double> f_tmp = f;
   vector<double> g;
+  vector<double> g0;
   deriv_p(x, g);
+  g0 = g;
+  // std::cout << "f'(x0) = " << g << "\n";
   vector<double> g_tmp = g;
   double ftol = 1e-3;
   double gtol = 0.9;
@@ -117,22 +141,40 @@ vector<double> linesearch_minpack(
   vector<bool> ls_converged(batchSize, false);
 
   // default is success
-  result = LS_SUCCESS;
+  result.resize(batchSize);
+  for (int i = 0; i < batchSize; i++) {
+    result[i] = LS_SUCCESS;
+  }
 
-  vector<int> ls_iter(batchSize, 0);
+  Eigen::VectorXd ls_iter = Eigen::VectorXd::Zero(batchSize);
 
   while (std::all_of(ls_converged.begin(), ls_converged.end(),
                      [](bool v) { return !v; })) {
     // call linesearch
     for (int ib = 0; ib < batchSize; ib++) {
       if (ls_converged[ib]) continue;
-      dcsrch_(&alpha[ib], &f[ib], &g[ib], &ftol, &gtol, &xtol, task[ib].data(),
-              &stpmin, &stpmax, isave[ib].data(), dsave[ib].data());
+      double alpha_k = alpha[ib];
+      dcsrch_(&f[ib], &g[ib], &alpha[ib], &ftol, &gtol, &xtol, &stpmin, &stpmax,
+              task[ib].data(), isave[ib].data(), dsave[ib].data());
       if (matchStr(task[ib], "CONVERGENCE")) {
+        printf(
+          "LS(%d): CONVERGED alpha=%e, (SDC =? %f <= %f, CC =? %f <= %f)\n", ib,
+          alpha[ib], f[ib], f0[ib] + ftol * alpha_k * g0[ib], std::abs(g[ib]),
+          gtol * std::abs(g0[ib]));
         ls_converged[ib] = true;
+        ls_iter[ib]++;
       } else if (matchStr(task[ib], "WARN")) {
-        result = LS_FAIL;
+        printf("LS(%d): WARNING: %s\n", ib, task[ib].data());
+        result[ib] = LS_FAIL;
         ls_converged[ib] = true;
+        // std::cout << "p=" <<
+      } else if (matchStr(task[ib], "FG")) {
+        printf("LS(%d): FG (SDC =? %e <= %e, CC =? %e <= %e)\n", ib, f[ib],
+               f0[ib] + ftol * alpha_k * g0[ib], std::abs(g[ib]),
+               gtol * std::abs(g0[ib]));
+      } else {
+        printf("LS(%d): %s (a=%f, f=%f, g=%f)\n", ib, task[ib].data(), alpha_k,
+               f[ib], g[ib]);
       }
     }
 
@@ -155,4 +197,14 @@ vector<double> linesearch_minpack(
       }
     }
   }
+  if (std::any_of(alpha.begin(), alpha.end(),
+                  [](double a) { return std::isinf(a) || std::isnan(a); })) {
+    printf("NaN/Inf detected!\n");
+    std::cout << "alpha=" << alpha << "\n";
+    assert(false);
+  }
+
+  std::cout << "LS Iterations: " << ls_iter.transpose() << "\n";
+  std::cout << "alpha=" << alpha << "\n";
+  return alpha;
 }

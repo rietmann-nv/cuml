@@ -98,7 +98,7 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     params = ::testing::TestWithParam<LBFGSBInputs<T>>::GetParam();
     std::cout << "Running LBFGSB Test!\n";
 
-    int batchSize = 2;
+    int batchSize = 1;
     ar.resize(batchSize);
     br.resize(batchSize);
 
@@ -110,6 +110,9 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     for (int i = 0; i < batchSize; i++) {
       ar[i] = da(gen);
       br[i] = db(gen);
+      ar[i] = 9.944977e-01;  // to match python test
+      br[i] = 1.004739e+02;
+      printf("(%d):a=%e, b=%e\n", i, ar[i], br[i]);
     }
 
     auto f = [&](const vector<Eigen::VectorXd>& x, vector<double>& fx) {
@@ -124,14 +127,18 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
       batched_h_rosenbrock(x, batchSize, ar, br, hfx);
     };
 
-    Batched_LBFGS_B opt(100, 100, 10, 1e-5, 1e7, 20, LBFGSB_PK_LBFGS);
+    Batched_LBFGS_B opt(100, 100, 10, 1e-5, 1e7, 20, LBFGSB_PK_BFGS);
     std::vector<LBFGSB_RESULT> status;
     std::vector<Eigen::VectorXd> x0(batchSize);
     for (int ib = 0; ib < batchSize; ib++) {
       x0[ib].resize(2);
       x0[ib][0] = ar[ib] + 0.1;
       x0[ib][1] = ar[ib] * ar[ib] + 0.1;
+      x0[ib][0] = 1.094498e+00;
+      x0[ib][1] = 1.089026e+00;
     }
+
+    printf("x0=(%e,%e)\n", x0[0][0], x0[0][1]);
 
     // test gradient
     vector<Eigen::VectorXd> grad_fd(batchSize);
@@ -191,11 +198,14 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
     gf(x0, gx0);
     gx0_f = gx0;
     std::vector<std::vector<Eigen::VectorXd>> xk_all;
+    std::vector<std::vector<Eigen::VectorXd>> gk_all;
     std::vector<std::vector<Eigen::VectorXd>> xk_f_all;
     std::vector<Eigen::VectorXd> x0f = x0;
 
-    opt.minimize(f, gf, fx0, gx0, x0, status, info_str, xk_all);
+    opt.minimize(f, gf, fx0, gx0, x0, status, info_str, xk_all, gk_all);
     check_status(status);
+    // opt.m_
+    opt.set_verbosity(10);
     opt.minimize_fortran(f, gf, fx0, gx0, x0f, status, info_str, xk_f_all);
     check_status(status);
 
@@ -218,18 +228,44 @@ class LBFGSBTest : public ::testing::TestWithParam<LBFGSBInputs<T>> {
 
     std::vector<double> x0ft;
     std::vector<double> y0ft;
+
+    std::vector<double> gx0t;
+    std::vector<double> gy0t;
+
     std::vector<double> x1ft;
     std::vector<double> y1ft;
     x_to_xy(xk_all, 0, x0t, y0t);
-    x_to_xy(xk_all, 1, x1t, y1t);
+    x_to_xy(gk_all, 0, gx0t, gy0t);
+    // x_to_xy(xk_all, 1, x1t, y1t);
     x_to_xy(xk_f_all, 0, x0ft, y0ft);
-    x_to_xy(xk_f_all, 1, x1ft, y1ft);
+
+    // x_to_xy(xk_f_all, 1, x1ft, y1ft);
     // plt::plot(x0t, y0t, "k-*");
     plt::plot(x0t, y0t, "k-*", x0ft, y0ft, "g--o");
+
+    vector<vector<double>> xy_py = {
+      {1.04735867, 1.11047114}, {0.99264727, 0.97800463},
+      {1.02149793, 1.04501998}, {1.0130744, 1.02619662},
+      {1.006173, 1.011653},     {1.00099469, 1.00130128},
+      {0.99551572, 0.99084313}, {0.99464043, 0.98929824},
+      {0.99450661, 0.98904349}, {0.99449793, 0.98902616}};
+
+    double a = 0.1;
+    vector<double> x_py;
+    vector<double> y_py;
+    for (int i = 0; i < gx0t.size(); i++) {
+      vector<double> x = {x0t[i], x0t[i] - a * gx0t[i]};
+      vector<double> y{y0t[i], y0t[i] - a * gy0t[i]};
+      // plt::plot(x, y, "r--*");
+      x_py.push_back(xy_py[i][0]);
+      y_py.push_back(xy_py[i][1]);
+      // plt::plot({xy_py[i][0]}, {xy_py[i][1]}, "b*");
+    }
+    plt::plot(x_py, y_py, "bo--");
     plt::plot({ar[0]}, {ar[0] * ar[0]}, "r*");
-    plt::subplot(batchSize, 1, 2);
-    plt::plot(x1t, y1t, "k-*", x1ft, y1ft, "g--o");
-    plt::plot({ar[1]}, {ar[1] * ar[1]}, "r*");
+    // plt::subplot(batchSize, 1, 2);
+    // plt::plot(x1t, y1t, "k-*", x1ft, y1ft, "g--o");
+    // plt::plot({ar[1]}, {ar[1] * ar[1]}, "r*");
     plt::show();
   }
   LBFGSBInputs<T> params;
